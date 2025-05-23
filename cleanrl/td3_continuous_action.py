@@ -200,6 +200,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
 
     # TRY NOT TO MODIFY: start the game
     obs, _ = envs.reset(seed=args.seed)
+    model_checkpoints = []
+    save_path = f'model_runs/'
     for global_step in range(args.total_timesteps):
         # ALGO LOGIC: put action logic here
         if global_step < args.learning_starts:
@@ -220,7 +222,18 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                     writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                     writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+                    # save episodic reward during training
+                    model_checkpoints.append(info['episode']['r'])
                     break
+        
+        # save model checkpoitn
+        if global_step % 10000 == 0:
+            save_path = f"periodic_saves/{run_name}"
+            model_path = f"{save_path}/{args.exp_name}_step{global_step}"
+            os.makedirs(save_path, exist_ok=True)
+            
+            torch.save((actor.state_dict(), qf1.state_dict(), qf2.state_dict()), model_path)
+            np.savez(f'{save_path}/{global_step}_rewards.npz', rewards=np.array(model_checkpoints))
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `final_observation`
         real_next_obs = next_obs.copy()
