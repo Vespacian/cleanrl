@@ -173,7 +173,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
 
-
+    # python cleanrl/td3_continuous_action.py --evaluate-checkpoint periodic_saves/HalfCheetah-v4__td3_continuous_action__1__1747963241/10000_rewards.npz
     if args.evaluate_checkpoint is not None:
         weights, qf1, qf2 = torch.load(args.evaluate_checkpoint)
         env = gym.make(args.env_id)
@@ -181,7 +181,15 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         actor.load_state_dict(weights)
         
         for i in range(100):
-            env = gym.make(args.env_id)
+            obs, info = env.reset(seed=args.seed)
+            print("------------")
+            print(type(obs), obs.shape)
+            print(obs)
+            episode_over = False
+            while not episode_over:
+                action = actor.forward(obs)
+                obs, reward, terminated, truncated, info = env.step(action)
+                episode_over = terminated or truncated
             
             next_obs, rewards, terminations, truncations, infos = env.step()
             
