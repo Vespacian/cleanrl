@@ -256,13 +256,13 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                         break
             
             # save model checkpoitn
+            # python cleanrl/td3_continuous_action.py --env-id HalfCheetah-v4
             if global_step % 10000 == 0:
                 save_path = f"periodic_saves/{run_name}"
                 model_path = f"{save_path}/{args.exp_name}_step{global_step}"
                 os.makedirs(save_path, exist_ok=True)
                 
                 torch.save((actor.state_dict(), qf1.state_dict(), qf2.state_dict()), model_path)
-                np.savez(f'{save_path}/{global_step}_rewards.npz', rewards=np.array(model_checkpoints))
 
             # TRY NOT TO MODIFY: save data to reply buffer; handle `final_observation`
             real_next_obs = next_obs.copy()
