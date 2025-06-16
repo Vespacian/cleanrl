@@ -173,25 +173,39 @@ poetry run pip install "stable_baselines3==2.0.0a1"
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
 
-    # python cleanrl/td3_continuous_action.py --evaluate-checkpoint periodic_saves/HalfCheetah-v4__td3_continuous_action__1__1747963241/10000_rewards.npz
+    # python cleanrl/td3_continuous_action.py --env-id HalfCheetah-v4 --evaluate-checkpoint periodic_saves/HalfCheetah-v4__td3_continuous_action__1__1749106273/td3_continuous_action_step10000
     if args.evaluate_checkpoint is not None:
         weights, qf1, qf2 = torch.load(args.evaluate_checkpoint)
         env = gym.make(args.env_id)
+        env.single_observation_space = env.observation_space
+        env.single_action_space = env.action_space
         actor = Actor(env).to(device)
         actor.load_state_dict(weights)
         
+        all_obs = []
+        all_actions = []
         for i in range(100):
             obs, info = env.reset(seed=args.seed)
-            print("------------")
-            print(type(obs), obs.shape)
-            print(obs)
+            # print("------------")
+            
             episode_over = False
             while not episode_over:
-                action = actor.forward(obs)
+                all_obs.append(obs)
+                with torch.no_grad():
+                    obs_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).to(device)
+                    action = actor(obs_tensor).cpu().numpy()[0]
+                all_actions.append(action)
+                
+                # print(type(obs), obs.shape)
+                # print(f'obs: {obs}')
+                # print(f'action: {action}')
+                
                 obs, reward, terminated, truncated, info = env.step(action)
                 episode_over = terminated or truncated
-            
-            next_obs, rewards, terminations, truncations, infos = env.step()
+
+        save_output_dir = os.path.join('eval', os.path.splitext(os.path.basename(args.evaluate_checkpoint))[0])
+        os.makedirs(save_output_dir, exist_ok=True)
+        np.savez(os.path.join(save_output_dir, 'outputs.npz'), observations=np.array(all_obs), actions=np.array(all_actions))
             
         
         
@@ -362,5 +376,5 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     f"videos/{run_name}-eval",
                 )
 
-    envs.close()
-    writer.close()
+        envs.close()
+        writer.close()

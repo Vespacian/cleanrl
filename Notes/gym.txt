@@ -1,1 +1,3 @@
 https://gymnasium.farama.org/introduction/basic_usage/
+- half cheetah
+https://gymnasium.farama.org/environments/mujoco/half_cheetah/
