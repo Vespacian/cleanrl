@@ -173,7 +173,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
 
-    # python cleanrl/td3_continuous_action.py --env-id HalfCheetah-v4 --evaluate-checkpoint periodic_saves/HalfCheetah-v4__td3_continuous_action__1__1749106273/td3_continuous_action_step10000
+    # python cleanrl/td3_continuous_action.py --env-id HalfCheetah-v4 --evaluate-checkpoint periodic_saves/HalfCheetah-v4__td3_continuous_action__1__1749106273/td3_continuous_action_step990000
     if args.evaluate_checkpoint is not None:
         weights, qf1, qf2 = torch.load(args.evaluate_checkpoint)
         env = gym.make(args.env_id)

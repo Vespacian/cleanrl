@@ -6,7 +6,7 @@ import gymnasium as gym
 
 # python view_checkpoint.py
 
-eval_path = 'eval/td3_continuous_action_step10000/outputs.npz'
+eval_path = 'eval/td3_continuous_action_step990000/outputs.npz'
 cp_path = ''
 data = np.load(eval_path)
 
