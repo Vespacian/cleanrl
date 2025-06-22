@@ -1,0 +1,13 @@
+
+the parts i will need
+- charts that I used
+- different architectures and action modeling strategies
+    - compare to generic log-prob minimization
+- include a chart with method name, parameter used, and final reward
+
+steps
+- first i think im going to open the files and make sure i can process them
+- i want to set up a pipeline that i can modify to try different architecutres and action models
+- then research into these different methods
+
+

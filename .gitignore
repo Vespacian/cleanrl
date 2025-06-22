@@ -1,3 +1,11 @@
+# assignment part 2 data ignore
+halfcheetah_v4_sac/halfcheetah_v4_data.pt
+halfcheetah_v4_sac/halfcheetah_v4_actor_weights.pt
+
+
+
+
+
 slurm
 .aim
 runs
