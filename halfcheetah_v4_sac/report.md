@@ -1,5 +1,5 @@
 # Reward over Time Plots for td3_continuous from CleanRL
-## Eric Bae
+Eric Bae
 
 
 # Preliminary Thoughts
@@ -24,10 +24,10 @@ Loaded up both pytorch files for data and actor weights
 - not really sure what action_bias is
 - 256 fc1/fc2 weight and biases
 
-![from gymnasium website on halfcheetah](img/action_space.png)
+<!-- ![from gymnasium website on halfcheetah](img/action_space.png) -->
 
 # Setting up pipeline
-First, I wanted to create the training loop, evaluation function, and plotting function. I decided to start with baseline
+First, I wanted to create the training loop, evaluation function, and plotting function. I decided to start with baseline (-log prob minimization)
 
 For the training loop:
 - decided to start with mini-batch gradient descent 
@@ -39,14 +39,42 @@ First try:
 - in my first initial run, I decided to define a few hyperparameters: `batch_size=1000`, `lr=1e-3`, `eval_freq=10`, and `N=5`
 - `eval_freq` is how often I call the eval function in between iterations
 - `N` defines how many episodes to run in the eval function
--  my main goal for this first run was to have a proof of concept working that I can work off on. Because of this, all hparams were pretty arbitrary
+-  my main goal for this first run was to have a proof of concept working that I can work off on. Because of this, all hparams were somewhat arbitrary
 - I decided to just try a Normal distribution with the log_prob to see what would happen
 
 ![results of first try](img/first_try.png)
 
-- some observations I made: with current hparams, there are 240 points on the graph and rewards are ~5000-6000
+- with current hparams, there are 240 points on the graph and rewards are ~5000-6000
 
 
 # Different Methodologies Tried
 
+- different hparam searching
+    - learning rate: 1e-3, 1e-4 
+    - batch sizes: 1000, 2000
+    - N experiments: 5, 10
+    - I ran experiments trying different combinations of these hparams and found the best one was:
+        - `lr=1e-4`, `batch_size=2000`, `N=10`
+    - because of this, most of my hparams for the rest of the different models kept these hparams
+- Diffusion T=10
+- Autoreggressive discretization B=20
+- Gaussin Mixture k=5
+- DAgger (Dataset Aggregation)
+- GAIL (Generative Adversarial Imitation Learning)
 
+
+## Chart of all methods
+
+| Method | Hparams | Final Reward Return | Notes |
+| :----: | :-----: | :-----------------: | :---: |
+| Baseline log-prob min | batch_size=1000, lr=1e-3, <br> eval_freq=10, and N=5 | ~5000-6000 | First baseline |
+| Baseline log-prob min | batch_size=2000, lr=1e-4, <br> eval_freq=10, and N=10 | ~6500 | Best Hparam baseline |
+
+
+
+
+# Best One Found
+- With _____ I was able to get a reward of ~_____
+
+
+![best result]()

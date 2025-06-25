@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import torch
 
 # returns num_split amount of batches
@@ -30,13 +29,3 @@ def run_eval(actor, env, device, N=5):
             total += reward
     
     return total / N
-
-# plots the reward over time
-def plot(rewards, eval_freq):
-    x = np.arange(len(rewards)) * eval_freq
-    plt.figure()
-    plt.plot(x, rewards)
-    plt.xlabel("training batches")
-    plt.ylabel("rewards")
-    plt.grid(True)
-    plt.show()

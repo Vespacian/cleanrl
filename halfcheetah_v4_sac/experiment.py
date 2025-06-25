@@ -7,18 +7,31 @@ import torch.optim as optim
 
 # network implementation
 from actor_impl import Actor
-from helper_functions import batch, run_eval, plot
+from helper_functions import batch, run_eval
 
-# variables and hparams
 env_id = "HalfCheetah-v4"
-batch_size = 1000
-lr = 1e-3
-eval_freq = 10
-N = 5
-# epochs = 10
 
 
-def train(data, weights, device):
+# plots the reward over time
+def plot(rewards, eval_freq, batch_size, lr, N, save_plot=False):
+    x = np.arange(len(rewards)) * eval_freq
+    plt.figure()
+    plt.plot(x, rewards)
+    plt.xlabel("training batches")
+    plt.ylabel("rewards")
+    plt.title(f'bs {batch_size}, lr {lr}, eval_freq {eval_freq}, N {N}')
+    plt.grid(True)
+    if save_plot:
+        os.makedirs('plots', exist_ok=True)
+        fname = f'halfcheetah_v4_sac/plots/bs{batch_size}_lr{lr}_ef{eval_freq}_N{N}.png'
+        plt.savefig(fname)
+        plt.close()
+    else:
+        plt.show()
+    print(f'plotted bs {batch_size}, lr {lr}, N {N}')
+
+
+def train(data, weights, device, batch_size, lr, eval_freq, N):
     print("started training")
     # init
     env = gym.make(env_id)
@@ -66,9 +79,23 @@ if __name__ == "__main__":
     data = torch.load("halfcheetah_v4_sac/halfcheetah_v4_data.pt", map_location=device)
     weights = torch.load("halfcheetah_v4_sac/halfcheetah_v4_actor_weights.pt", map_location=device)
     
-    rewards = train(data, weights, device)
-    print("plotting")
-    plot(rewards, eval_freq)
+    # hparams
+    batch_size = 2000
+    lr = 1e-4
+    eval_freq = 10
+    N = 10
     
+    rewards = train(data, weights, device, batch_size, lr, eval_freq, N)
+    plot(rewards, eval_freq, batch_size, lr, N, False)
     
+    # batch_size = [1000, 2000]
+    # lr = [1e-3, 1e-4]
+    # eval_freq = 10
+    # N = [5, 10]
+    
+    # for bs in batch_size:
+    #     for learn in lr:
+    #         for n in N:
+    #             rewards = train(data, weights, device, bs, learn, eval_freq, n)
+    #             plot(rewards, eval_freq, bs, learn, n, True)
     
