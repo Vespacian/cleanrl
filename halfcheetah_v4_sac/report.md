@@ -44,7 +44,7 @@ First try:
 
 ![results of first try](img/first_try.png)
 
-- with current hparams, there are 240 points on the graph and rewards are ~5000-6000
+- with current hparams, there are 240 points on the graph and rewards are ~6500
 
 
 # Different Methodologies Tried
@@ -56,11 +56,18 @@ First try:
     - I ran experiments trying different combinations of these hparams and found the best one was:
         - `lr=1e-4`, `batch_size=2000`, `N=10`
     - because of this, most of my hparams for the rest of the different models kept these hparams
+- DAgger (Dataset Aggregation)
+    - from what I read, this seems like a method to boost performance for models using obs-action pairs
+    - "DAgger improves on behavioral cloning by training on a dataset that better resembles the observations the trained policy is likely to encounter, but it requires querying the expert online."  - [Source](https://imitation.readthedocs.io/en/latest/algorithms/dagger.html)
+    - on the first try, I was getting about ~6500 by the final eval, worse than my baseline so I changed a couple things on the next try
+        - shuffled the data in the dataset around so old and newly added data would be mixed
+        - made it retrain for 3 epochs instead of just once every time train was called but it only increased to ~7000
+        - still not as good as the baseline so decided to get back to the drawing board
 - Diffusion T=10
 - Autoreggressive discretization B=20
 - Gaussin Mixture k=5
-- DAgger (Dataset Aggregation)
 - GAIL (Generative Adversarial Imitation Learning)
+- AIRL (Adversarial Inverse RL)
 
 
 ## Chart of all methods
@@ -68,7 +75,9 @@ First try:
 | Method | Hparams | Final Reward Return | Notes |
 | :----: | :-----: | :-----------------: | :---: |
 | Baseline log-prob min | batch_size=1000, lr=1e-3, <br> eval_freq=10, and N=5 | ~6500 | First baseline |
-| Baseline log-prob min | batch_size=2000, lr=1e-4, <br> eval_freq=10, and N=10 | ~7250 | Best Hparam baseline |
+| Baseline log-prob min | batch_size=2000, lr=1e-4, <br> eval_freq=10, N=10 | ~7250 | Using Best Hparams |
+| DAgger | batch_size=2000, lr=1e-4, <br> eval_freq=10, N=10 | ~7000 | Trying to <br> improve baseline |
+| Diffusion | batch_size=2000, lr=1e-4, <br> eval_freq=10, N=10 |  |  |
 
 
 

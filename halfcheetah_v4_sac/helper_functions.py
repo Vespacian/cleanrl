@@ -29,3 +29,27 @@ def run_eval(actor, env, device, N=5):
             total += reward
     
     return total / N
+
+def collect_states(actor, env, device, N=5):
+    states = []
+    for _ in range(N): 
+        obs, info = env.reset()
+        episode_over = False
+        
+        while not episode_over:
+            with torch.no_grad():
+                obs_tensor = (torch.from_numpy(obs).float().unsqueeze(0).to(device))
+                action, log_prob, mean = actor.get_action(obs_tensor)
+                mean = mean.squeeze(0).cpu().numpy()
+            
+            obs, reward, terminated, truncated, info = env.step(mean)
+            episode_over = terminated or truncated
+            states.append(obs.copy())
+    
+    return np.array(states)
+
+def collect_actions(actor, states, device):
+    with torch.no_grad():
+        obs_tensor = torch.from_numpy(states).float().to(device)
+        action, log_prob, mean = actor.get_action(obs_tensor)
+    return mean.cpu().numpy()
