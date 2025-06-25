@@ -52,7 +52,7 @@ First try:
 - different hparam searching
     - learning rate: 1e-3, 1e-4 
     - batch sizes: 1000, 2000
-    - N experiments: 5, 10
+    - N: 5, 10
     - I ran experiments trying different combinations of these hparams and found the best one was:
         - `lr=1e-4`, `batch_size=2000`, `N=10`
     - because of this, most of my hparams for the rest of the different models kept these hparams
@@ -67,8 +67,8 @@ First try:
 
 | Method | Hparams | Final Reward Return | Notes |
 | :----: | :-----: | :-----------------: | :---: |
-| Baseline log-prob min | batch_size=1000, lr=1e-3, <br> eval_freq=10, and N=5 | ~5000-6000 | First baseline |
-| Baseline log-prob min | batch_size=2000, lr=1e-4, <br> eval_freq=10, and N=10 | ~6500 | Best Hparam baseline |
+| Baseline log-prob min | batch_size=1000, lr=1e-3, <br> eval_freq=10, and N=5 | ~6500 | First baseline |
+| Baseline log-prob min | batch_size=2000, lr=1e-4, <br> eval_freq=10, and N=10 | ~7250 | Best Hparam baseline |
 
 
 

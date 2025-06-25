@@ -88,14 +88,3 @@ if __name__ == "__main__":
     rewards = train(data, weights, device, batch_size, lr, eval_freq, N)
     plot(rewards, eval_freq, batch_size, lr, N, False)
     
-    # batch_size = [1000, 2000]
-    # lr = [1e-3, 1e-4]
-    # eval_freq = 10
-    # N = [5, 10]
-    
-    # for bs in batch_size:
-    #     for learn in lr:
-    #         for n in N:
-    #             rewards = train(data, weights, device, bs, learn, eval_freq, n)
-    #             plot(rewards, eval_freq, bs, learn, n, True)
-    

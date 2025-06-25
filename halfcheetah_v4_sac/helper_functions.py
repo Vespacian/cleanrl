@@ -22,9 +22,9 @@ def run_eval(actor, env, device, N=5):
             with torch.no_grad():
                 obs_tensor = (torch.from_numpy(obs).float().unsqueeze(0).to(device))
                 action, log_prob, mean = actor.get_action(obs_tensor)
-                action = action.squeeze(0).cpu().numpy()
+                mean = mean.squeeze(0).cpu().numpy()
             
-            obs, reward, terminated, truncated, info = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(mean)
             episode_over = terminated or truncated
             total += reward
     

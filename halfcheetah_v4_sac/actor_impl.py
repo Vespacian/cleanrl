@@ -30,6 +30,8 @@ class Actor(nn.Module):
                 dtype=torch.float32,
             ),
         )
+        
+        
 
     # baseline
     def forward(self, x):
@@ -48,14 +50,9 @@ class Actor(nn.Module):
     # def forward(self, x):
     #     x = F.relu(self.fc1(x))
     #     x = F.relu(self.fc2(x))
-    #     mean = self.fc_mean(x)
-    #     log_std = self.fc_logstd(x)
-    #     log_std = torch.tanh(log_std)
-    #     log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (
-    #         log_std + 1
-    #     )  # From SpinUp / Denis Yarats
+        
 
-    #     return mean, log_std
+    #     return 0
 
     def get_action(self, x):
         mean, log_std = self(x)
