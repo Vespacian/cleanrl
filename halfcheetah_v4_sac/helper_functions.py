@@ -30,6 +30,28 @@ def run_eval(actor, env, device, N=5):
     
     return total / N
 
+def run_eval_gauss(actor, env, device, N=5):
+    total = 0
+    for _ in range(N): 
+        obs, info = env.reset()
+        episode_over = False
+        
+        while not episode_over:
+            with torch.no_grad():
+                obs_tensor = (torch.from_numpy(obs).float().unsqueeze(0).to(device))
+                logits, mean, logstd = actor(obs_tensor)
+            
+            probs = torch.softmax(logits, dim=1)
+            mix = (probs.unsqueeze(-1) * mean).sum(dim=1)
+            mean = torch.tanh(mix) * actor.action_scale + actor.action_bias
+            mean = mean.squeeze(0).cpu().numpy()
+            
+            obs, reward, terminated, truncated, info = env.step(mean)
+            episode_over = terminated or truncated
+            total += reward
+    
+    return total / N
+
 def collect_states(actor, env, device, N=5):
     states = []
     for _ in range(N): 

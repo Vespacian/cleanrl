@@ -64,8 +64,13 @@ class Actor(nn.Module):
         super().__init__()
         self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod(), 256)
         self.fc2 = nn.Linear(256, 256)
-        self.fc_mean = nn.Linear(256, np.prod(env.single_action_space.shape))
-        self.fc_logstd = nn.Linear(256, np.prod(env.single_action_space.shape))
+        
+        self.K = 5
+        self.action_dim = np.prod(env.single_action_space.shape)
+        self.fc_mean = nn.Linear(256, self.K * self.action_dim)
+        self.fc_logstd = nn.Linear(256, self.K * self.action_dim)
+        self.fc_logits = nn.Linear(256, self.K)
+        
         # action rescaling
         self.register_buffer(
             "action_scale",
@@ -85,15 +90,22 @@ class Actor(nn.Module):
     # baseline
     def forward(self, x):
         x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        mean = self.fc_mean(x)
-        log_std = self.fc_logstd(x)
+        feat = F.relu(self.fc2(x))
+        
+        logits = self.fc_logits(feat)
+        
+        mean = self.fc_mean(feat)
+        mean = mean.view(-1, self.K, self.action_dim)
+        
+        log_std = self.fc_logstd(feat)
+        log_std = log_std.view(-1, self.K, self.action_dim)
         log_std = torch.tanh(log_std)
+        
         log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (
             log_std + 1
         )  # From SpinUp / Denis Yarats
 
-        return mean, log_std
+        return logits, mean, log_std
 
     def get_action(self, x):
         mean, log_std = self(x)

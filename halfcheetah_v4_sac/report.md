@@ -58,14 +58,24 @@ First try:
     - because of this, most of my hparams for the rest of the different models kept these hparams
 - DAgger (Dataset Aggregation)
     - from what I read, this seems like a method to boost performance for models using obs-action pairs
+    - it would be a modification of my training loop but it would keep my basic architecture intact so I kept it
     - "DAgger improves on behavioral cloning by training on a dataset that better resembles the observations the trained policy is likely to encounter, but it requires querying the expert online."  - [Source](https://imitation.readthedocs.io/en/latest/algorithms/dagger.html)
     - on the first try, I was getting about ~6500 by the final eval, worse than my baseline so I changed a couple things on the next try
         - shuffled the data in the dataset around so old and newly added data would be mixed
         - made it retrain for 3 epochs instead of just once every time train was called but it only increased to ~7000
         - still not as good as the baseline so decided to get back to the drawing board
+- Gaussian Mixture k=5
+    - my first attempt at it is getting around ~6500
+    - to try to increase it, I decided to run another hparam grid search
+        - batch_size = [500, 1000, 2000, 4000]
+        - lr = [1e-3, 1e-4, 5e-4]
+        - eval_freq = 10
+        - N = 10
+        - epochs = 1
+    - the best hyperparameters I've found is batch_size=500 and lr=1e-3
+    - even with hyperparameter training, I'm getting around baseline at most
 - Diffusion T=10
 - Autoreggressive discretization B=20
-- Gaussin Mixture k=5
 - GAIL (Generative Adversarial Imitation Learning)
 - AIRL (Adversarial Inverse RL)
 
@@ -77,7 +87,7 @@ First try:
 | Baseline log-prob min | batch_size=1000, lr=1e-3, <br> eval_freq=10, and N=5 | ~6500 | First baseline |
 | Baseline log-prob min | batch_size=2000, lr=1e-4, <br> eval_freq=10, N=10 | ~7250 | Using Best Hparams |
 | DAgger | batch_size=2000, lr=1e-4, <br> eval_freq=10, N=10 | ~7000 | Trying to <br> improve baseline |
-| Diffusion | batch_size=2000, lr=1e-4, <br> eval_freq=10, N=10 |  |  |
+| Gaussian Mixture | `k=5`, batch_size=500, lr=1e-3, <br> eval_freq=10, N=10 | ~6500 | k is number <br> of mixtures |
 
 
 
