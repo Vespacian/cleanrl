@@ -62,8 +62,9 @@ LOG_STD_MIN = -5
 class Actor(nn.Module):
     def __init__(self, env):
         super().__init__()
-        self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod(), 256)
-        self.fc2 = nn.Linear(256, 256)
+        self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod(), 512)
+        self.fc2 = nn.Linear(512, 512)
+        self.fc3 = nn.Linear(512, 256)
         
         self.K = 5
         self.action_dim = np.prod(env.single_action_space.shape)
@@ -87,10 +88,10 @@ class Actor(nn.Module):
             ),
         )
 
-    # baseline
     def forward(self, x):
         x = F.relu(self.fc1(x))
-        feat = F.relu(self.fc2(x))
+        x = F.relu(self.fc2(x))
+        feat = F.relu(self.fc3(x))
         
         logits = self.fc_logits(feat)
         

@@ -66,14 +66,16 @@ First try:
         - still not as good as the baseline so decided to get back to the drawing board
 - Gaussian Mixture k=5
     - my first attempt at it is getting around ~6500
-    - to try to increase it, I decided to run another hparam grid search
-        - batch_size = [500, 1000, 2000, 4000]
-        - lr = [1e-3, 1e-4, 5e-4]
-        - eval_freq = 10
-        - N = 10
-        - epochs = 1
-    - the best hyperparameters I've found is batch_size=500 and lr=1e-3
-    - even with hyperparameter training, I'm getting around baseline at most
+        - to try to increase it, I decided to run another hparam grid search
+            - batch_size = [500, 1000, 2000, 4000]
+            - lr = [1e-3, 1e-4, 5e-4]
+            - eval_freq = 10
+            - N = 10
+            - epochs = 1
+        - the best hyperparameters I've found is batch_size=500 and lr=1e-3
+        - even with hyperparameter training, I'm getting around baseline at most
+    - in the next attempt, I widened the current linear layer up to 512 and added a 3rd Linear layer
+        - also changed the loss calculation to just MSE
 - Diffusion T=10
 - Autoreggressive discretization B=20
 - GAIL (Generative Adversarial Imitation Learning)
@@ -88,6 +90,7 @@ First try:
 | Baseline log-prob min | batch_size=2000, lr=1e-4, <br> eval_freq=10, N=10 | ~7250 | Using Best Hparams |
 | DAgger | batch_size=2000, lr=1e-4, <br> eval_freq=10, N=10 | ~7000 | Trying to <br> improve baseline |
 | Gaussian Mixture | `k=5`, batch_size=500, lr=1e-3, <br> eval_freq=10, N=10 | ~6500 | k is number <br> of mixtures |
+| MSE | batch_size=500, lr=1e-3, <br> eval_freq=10, N=30 <br> epochs=3 weight_decay=1e-6 | ~9500 | This one is after <br> increasing the size <br> of the model and finding <br> optimal hparams |
 
 
 

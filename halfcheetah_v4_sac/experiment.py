@@ -8,6 +8,7 @@ import torch.optim as optim
 # network implementation
 from actor_impl import Actor
 from helper_functions import batch, run_eval, run_eval_gauss
+import torch.nn.functional as F
 from torch.distributions import Categorical, Independent, MixtureSameFamily, Normal
 
 env_id = "HalfCheetah-v4"
@@ -32,7 +33,7 @@ def plot(rewards, eval_freq, batch_size, lr, N, save_plot=False):
     print(f'plotted bs {batch_size}, lr {lr}, N {N}')
 
 
-def train(data, weights, device, batch_size, lr, eval_freq, N, epochs=3):
+def train(data, weights, device, batch_size, lr, eval_freq, N, weight_decay, epochs=3):
     print("started training")
     # init
     env = gym.make(env_id)
@@ -58,7 +59,7 @@ def train(data, weights, device, batch_size, lr, eval_freq, N, epochs=3):
             new_sd[k][:D] = v
     
     actor.load_state_dict(new_sd)
-    optimizer = optim.Adam(actor.parameters(), lr=lr)
+    optimizer = optim.Adam(actor.parameters(), lr=lr, weight_decay=weight_decay)
     
     # training loop
     actor.train()
@@ -74,11 +75,15 @@ def train(data, weights, device, batch_size, lr, eval_freq, N, epochs=3):
             mean = mean * actor.action_scale + actor.action_bias
             std = log_std.exp() * actor.action_scale
             
-            mix = Categorical(logits=logits)
-            comp = Independent(Normal(mean, std), 1)
+            # mix = Categorical(logits=logits)
+            # comp = Independent(Normal(mean, std), 1)
                     
-            dist = MixtureSameFamily(mix, comp)
-            log_probs = dist.log_prob(actions)
+            # dist = MixtureSameFamily(mix, comp)
+            # log_probs = dist.log_prob(actions)
+            
+            probs = torch.softmax(logits, dim=1)
+            mix = (probs.unsqueeze(-1) * mean).sum(dim=1)
+            pred = torch.tanh(mix) * actor.action_scale + actor.action_bias
             
             # confirm that data loaded correctly
             if i == 0:
@@ -87,7 +92,8 @@ def train(data, weights, device, batch_size, lr, eval_freq, N, epochs=3):
                 print("Means[0,k,:] for k=0..4:", mean[0].detach().cpu().numpy())  
                 print("Std[0,k,:] :", std[0].detach().cpu().numpy())
             
-            loss = -log_probs.mean()
+            # loss = -log_probs.mean()
+            loss = F.mse_loss(pred, actions)
             
             optimizer.zero_grad()
             loss.backward()
@@ -100,6 +106,8 @@ def train(data, weights, device, batch_size, lr, eval_freq, N, epochs=3):
                 rewards.append(run_eval_gauss(actor, env, device, N))
                 actor.train()
     
+    print(f'final reward: {rewards[-1]}')
+    
     return rewards
 
 
@@ -111,22 +119,34 @@ if __name__ == "__main__":
     weights = torch.load("halfcheetah_v4_sac/halfcheetah_v4_actor_weights.pt", map_location=device)
     
     # hparams
-    # batch_size = 2000
-    # lr = 1e-4
+    batch_size = 500
+    lr = 1e-3
+    eval_freq = 10
+    N = 30
+    epochs = 3
+    weight_decay = 1e-6
+    
+    rewards = train(
+        data=data, 
+        weights=weights, 
+        device=device, 
+        batch_size=batch_size, 
+        lr=lr, 
+        eval_freq=eval_freq, 
+        N=N, 
+        weight_decay=weight_decay,
+        epochs=epochs
+    )
+    plot(rewards, eval_freq, batch_size, lr, N, True)
+    
+    # batch_size = [500, 1000, 2000, 4000]
+    # lr = [1e-3, 1e-4, 5e-4]
     # eval_freq = 10
     # N = 10
+    # epochs = 1
     
-    # rewards = train(data, weights, device, batch_size, lr, eval_freq, N)
-    # plot(rewards, eval_freq, batch_size, lr, N, True)
-    
-    batch_size = [500, 1000, 2000, 4000]
-    lr = [1e-3, 1e-4, 5e-4]
-    eval_freq = 10
-    N = 10
-    epochs = 1
-    
-    for bs in batch_size:
-        for l in lr:
-            rewards = train(data, weights, device, bs, l, eval_freq, N, epochs=epochs)
-            plot(rewards, eval_freq, bs, l, N, True)
+    # for bs in batch_size:
+    #     for l in lr:
+    #         rewards = train(data, weights, device, bs, l, eval_freq, N, epochs=epochs)
+    #         plot(rewards, eval_freq, bs, l, N, True)
     
