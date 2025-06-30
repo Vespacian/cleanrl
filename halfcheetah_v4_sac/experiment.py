@@ -4,10 +4,11 @@ import os
 import torch
 import gymnasium as gym
 import torch.optim as optim
+import time
 
 # network implementation
-from actor_impl import Actor
-from helper_functions import batch, run_eval, run_eval_gauss
+from actor_impl import Actor, Scheduler
+from helper_functions import batch, run_eval, run_eval_gauss, make_onehot, run_eval_diff
 import torch.nn.functional as F
 from torch.distributions import Categorical, Independent, MixtureSameFamily, Normal
 
@@ -34,78 +35,68 @@ def plot(rewards, eval_freq, batch_size, lr, N, save_plot=False):
 
 
 def train(data, weights, device, batch_size, lr, eval_freq, N, weight_decay, epochs=3):
+    start_time = time.time()
     print("started training")
     # init
+    scheduler = Scheduler(T=25, device=device)
+    
     env = gym.make(env_id)
     env.single_observation_space = env.observation_space
     env.single_action_space = env.action_space
-    actor = Actor(env).to(device)
+    actor = Actor(env, hidden=256, T=scheduler.T).to(device)
     
+    # manual merge
     new_sd = actor.state_dict()
-
-    D = actor.action_dim  # e.g. 6
-    K = actor.K           # e.g. 5
     for k, v in weights.items():
         if k in new_sd and v.shape == new_sd[k].shape:
             new_sd[k] = v
-        
-        if k == "fc_mean.weight":
-            new_sd[k][:D, :] = v
-        elif k == "fc_mean.bias":
-            new_sd[k][:D] = v
-        elif k == "fc_logstd.weight":
-            new_sd[k][:D, :] = v
-        elif k == "fc_logstd.bias":
-            new_sd[k][:D] = v
-    
     actor.load_state_dict(new_sd)
+    
     optimizer = optim.Adam(actor.parameters(), lr=lr, weight_decay=weight_decay)
+    
+    obs_mean = data['observations'].mean(0).to(device)
+    obs_std = data['observations'].std(0).to(device)
     
     # training loop
     actor.train()
     rewards = []
     batched_data = batch(data, batch_size=batch_size)
     print("entering training loop")
-    for _ in range(epochs):
-        for i, b in enumerate(batched_data):
+    for i in range(epochs):
+        epoch_time = time.time()
+        for j, b in enumerate(batched_data):
             states = torch.stack([s for s, _ in b]).float().to(device=device)
             actions = torch.stack([a for _, a in b]).float().to(device=device)
             
-            logits, mean, log_std = actor(states)
-            mean = mean * actor.action_scale + actor.action_bias
-            std = log_std.exp() * actor.action_scale
+            states = (states - obs_mean) / obs_std
+            act_norm = (actions - actor.action_bias) / actor.action_scale
             
-            # mix = Categorical(logits=logits)
-            # comp = Independent(Normal(mean, std), 1)
-                    
-            # dist = MixtureSameFamily(mix, comp)
-            # log_probs = dist.log_prob(actions)
+            t = torch.randint(0, scheduler.T, (batch_size,), device=device)
+            noise = torch.randn_like(act_norm)
+            xt = scheduler.q_sample(act_norm, t, noise)
             
-            probs = torch.softmax(logits, dim=1)
-            mix = (probs.unsqueeze(-1) * mean).sum(dim=1)
-            pred = torch.tanh(mix) * actor.action_scale + actor.action_bias
+            onehot = make_onehot(t, scheduler.T, device=device)
+            pred = actor(xt, states, onehot)
             
-            # confirm that data loaded correctly
-            if i == 0:
-                print("MoG shapes:", logits.shape, mean.shape, std.shape)
-                print("Mixture weights (first):", torch.softmax(logits,1)[0].detach().cpu().numpy())
-                print("Means[0,k,:] for k=0..4:", mean[0].detach().cpu().numpy())  
-                print("Std[0,k,:] :", std[0].detach().cpu().numpy())
-            
-            # loss = -log_probs.mean()
-            loss = F.mse_loss(pred, actions)
+            loss = F.mse_loss(pred, noise)
             
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             
             # eval
-            if i % eval_freq == 0:
+            if j % eval_freq == 0:
                 # print(f'eval batch {i}')
+                eval_time = time.time()
                 actor.eval()
-                rewards.append(run_eval_gauss(actor, env, device, N))
+                with torch.no_grad():
+                    rewards.append(run_eval_diff(actor, (obs_mean, obs_std), scheduler, env, device, N))
+                print(f"Eval {j} time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - eval_time))}")
                 actor.train()
+        
+        print(f"Epoch {i} time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - epoch_time))}")
     
+    print(f"Total time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))}")
     print(f'final reward: {rewards[-1]}')
     
     return rewards
@@ -121,9 +112,9 @@ if __name__ == "__main__":
     # hparams
     batch_size = 500
     lr = 1e-3
-    eval_freq = 10
-    N = 30
-    epochs = 3
+    eval_freq = 100
+    N = 10
+    epochs = 1
     weight_decay = 1e-6
     
     rewards = train(
@@ -150,3 +141,84 @@ if __name__ == "__main__":
     #         rewards = train(data, weights, device, bs, l, eval_freq, N, epochs=epochs)
     #         plot(rewards, eval_freq, bs, l, N, True)
     
+    
+    
+    
+
+# old train function
+# def train(data, weights, device, batch_size, lr, eval_freq, N, weight_decay, epochs=3):
+#     print("started training")
+#     # init
+#     env = gym.make(env_id)
+#     env.single_observation_space = env.observation_space
+#     env.single_action_space = env.action_space
+#     actor = Actor(env).to(device)
+    
+#     new_sd = actor.state_dict()
+
+#     D = actor.action_dim  # e.g. 6
+#     K = actor.K           # e.g. 5
+#     for k, v in weights.items():
+#         if k in new_sd and v.shape == new_sd[k].shape:
+#             new_sd[k] = v
+        
+#         if k == "fc_mean.weight":
+#             new_sd[k][:D, :] = v
+#         elif k == "fc_mean.bias":
+#             new_sd[k][:D] = v
+#         elif k == "fc_logstd.weight":
+#             new_sd[k][:D, :] = v
+#         elif k == "fc_logstd.bias":
+#             new_sd[k][:D] = v
+    
+#     actor.load_state_dict(new_sd)
+#     optimizer = optim.Adam(actor.parameters(), lr=lr, weight_decay=weight_decay)
+    
+#     # training loop
+#     actor.train()
+#     rewards = []
+#     batched_data = batch(data, batch_size=batch_size)
+#     print("entering training loop")
+#     for _ in range(epochs):
+#         for i, b in enumerate(batched_data):
+#             states = torch.stack([s for s, _ in b]).float().to(device=device)
+#             actions = torch.stack([a for _, a in b]).float().to(device=device)
+            
+#             logits, mean, log_std = actor(states)
+#             mean = mean * actor.action_scale + actor.action_bias
+#             std = log_std.exp() * actor.action_scale
+            
+#             # mix = Categorical(logits=logits)
+#             # comp = Independent(Normal(mean, std), 1)
+                    
+#             # dist = MixtureSameFamily(mix, comp)
+#             # log_probs = dist.log_prob(actions)
+            
+#             probs = torch.softmax(logits, dim=1)
+#             mix = (probs.unsqueeze(-1) * mean).sum(dim=1)
+#             pred = torch.tanh(mix) * actor.action_scale + actor.action_bias
+            
+#             # confirm that data loaded correctly
+#             if i == 0:
+#                 print("MoG shapes:", logits.shape, mean.shape, std.shape)
+#                 print("Mixture weights (first):", torch.softmax(logits,1)[0].detach().cpu().numpy())
+#                 print("Means[0,k,:] for k=0..4:", mean[0].detach().cpu().numpy())  
+#                 print("Std[0,k,:] :", std[0].detach().cpu().numpy())
+            
+#             # loss = -log_probs.mean()
+#             loss = F.mse_loss(pred, actions)
+            
+#             optimizer.zero_grad()
+#             loss.backward()
+#             optimizer.step()
+            
+#             # eval
+#             if i % eval_freq == 0:
+#                 # print(f'eval batch {i}')
+#                 actor.eval()
+#                 rewards.append(run_eval_gauss(actor, env, device, N))
+#                 actor.train()
+    
+#     print(f'final reward: {rewards[-1]}')
+    
+#     return rewards    
