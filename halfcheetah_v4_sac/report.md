@@ -84,14 +84,12 @@ First try:
     - to get a better understanding, I read this [paper](https://www.roboticsproceedings.org/rss19/p026.pdf) by Columbia University, Toyota Research Institute, MIT
     - I had the most difficulty with implementing this one properly, my rewards were absurdly low
     - I decided to try to set up a pretraining loop before diffusion as currently, my diffusion loop was starting from scratch and wasn't considering the checkpoint's weights
-
-    - to try next: add diffusion scheduler, up the pretrain rewards, hparam search?, plot out alpha_bar for smooth decay?
     
     
 
+<div style="page-break-after: always;"></div>
 
-
-## Chart of all methods
+# Chart of all methods
 
 | Method | Hparams | Final Reward Return | Notes |
 | :----: | :-----: | :-----------------: | :---: |
@@ -100,13 +98,23 @@ First try:
 | DAgger | batch_size=2000, lr=1e-4, <br> eval_freq=10, N=10 | ~7000 | Trying to <br> improve baseline |
 | Gaussian Mixture | `k=5`, batch_size=500, lr=1e-3, <br> eval_freq=10, N=10 | ~6500 | k is number <br> of mixtures |
 | MoG + MSE | batch_size=500, lr=1e-3, <br> eval_freq=10, N=30 <br> epochs=3 weight_decay=1e-6 | ~9500 | This one is after <br> increasing the size <br> of the model and finding <br> optimal hparams |
-| Diffusion | batch_size=500, lr=1e-3, <br> eval_freq=10, N=30 <br> epochs=3 weight_decay=1e-6 | ~ |  |
+| Diffusion + MSE | batch_size=500 lr=1e-4 eval_freq=100 <br> N=30 pretrain_lr=5e-5 pretrain_epochs=20 <br> epochs=5 weight_decay=1e-6 T=25 | ~2000 | Added pretrain loop for weights <br> then used diffusion policy |
+
+<div style="page-break-after: always;"></div>
+
+# Diffusion
+- Ran multiple different attempts on trying to make diffusion work well
+- wanted to warm up the model with the checkpoint's weights so I made a pretrain loop
+- increased epochs and lowered lr in attempt to increase reward output
+- had the most struggle trying to have the actor learn
+- this was my best I could do it right now at about ~2000 rewards
+
+![best diffusion](plots/Diffusion/long_run.png)
 
 
-
+<div style="page-break-after: always;"></div>
 
 # Best One Found
-- With _____ I was able to get a reward of ~_____
+- With Mixture of Gaussian with MSE Loss I was able to get a reward of ~9500. 
 
-
-![best result]()
+![best result](plots/MSE/mse_best.png)
