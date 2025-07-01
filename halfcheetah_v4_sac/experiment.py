@@ -7,8 +7,8 @@ import torch.optim as optim
 import time
 
 # network implementation
-from actor_impl import Actor, Scheduler
-from helper_functions import batch, run_eval, run_eval_gauss, make_onehot, run_eval_diff
+from actor_impl import Actor, DiffusionActor, OGActor
+from helper_functions import batch, run_eval, run_eval_gauss, run_eval_diff
 import torch.nn.functional as F
 from torch.distributions import Categorical, Independent, MixtureSameFamily, Normal
 
@@ -33,29 +33,34 @@ def plot(rewards, eval_freq, batch_size, lr, N, save_plot=False):
         plt.show()
     print(f'plotted bs {batch_size}, lr {lr}, N {N}')
 
-
+# old train function
 def train(data, weights, device, batch_size, lr, eval_freq, N, weight_decay, epochs=3):
     start_time = time.time()
     print("started training")
     # init
-    scheduler = Scheduler(T=25, device=device)
-    
     env = gym.make(env_id)
     env.single_observation_space = env.observation_space
     env.single_action_space = env.action_space
-    actor = Actor(env, hidden=256, T=scheduler.T).to(device)
+    actor = Actor(env).to(device)
     
-    # manual merge
     new_sd = actor.state_dict()
+
+    D = actor.action_dim
     for k, v in weights.items():
         if k in new_sd and v.shape == new_sd[k].shape:
             new_sd[k] = v
+        
+        if k == "fc_mean.weight":
+            new_sd[k][:D, :] = v
+        elif k == "fc_mean.bias":
+            new_sd[k][:D] = v
+        elif k == "fc_logstd.weight":
+            new_sd[k][:D, :] = v
+        elif k == "fc_logstd.bias":
+            new_sd[k][:D] = v
+    
     actor.load_state_dict(new_sd)
-    
     optimizer = optim.Adam(actor.parameters(), lr=lr, weight_decay=weight_decay)
-    
-    obs_mean = data['observations'].mean(0).to(device)
-    obs_std = data['observations'].std(0).to(device)
     
     # training loop
     actor.train()
@@ -68,16 +73,126 @@ def train(data, weights, device, batch_size, lr, eval_freq, N, weight_decay, epo
             states = torch.stack([s for s, _ in b]).float().to(device=device)
             actions = torch.stack([a for _, a in b]).float().to(device=device)
             
-            states = (states - obs_mean) / obs_std
-            act_norm = (actions - actor.action_bias) / actor.action_scale
+            logits, mean, log_std = actor(states)
+            mean = mean * actor.action_scale + actor.action_bias
+            std = log_std.exp() * actor.action_scale
             
-            t = torch.randint(0, scheduler.T, (batch_size,), device=device)
-            noise = torch.randn_like(act_norm)
-            xt = scheduler.q_sample(act_norm, t, noise)
+            # mix = Categorical(logits=logits)
+            # comp = Independent(Normal(mean, std), 1)
+                    
+            # dist = MixtureSameFamily(mix, comp)
+            # log_probs = dist.log_prob(actions)
             
-            onehot = make_onehot(t, scheduler.T, device=device)
-            pred = actor(xt, states, onehot)
+            probs = torch.softmax(logits, dim=1)
+            mix = (probs.unsqueeze(-1) * mean).sum(dim=1)
+            pred = torch.tanh(mix) * actor.action_scale + actor.action_bias
             
+            # confirm that data loaded correctly
+            if j == 0:
+                print("MoG shapes:", logits.shape, mean.shape, std.shape)
+                print("Mixture weights (first):", torch.softmax(logits,1)[0].detach().cpu().numpy())
+                print("Means[0,k,:] for k=0..4:", mean[0].detach().cpu().numpy())  
+                print("Std[0,k,:] :", std[0].detach().cpu().numpy())
+            
+            # loss = -log_probs.mean()
+            loss = F.mse_loss(pred, actions)
+            
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            
+            # eval
+            if j % eval_freq == 0:
+                # print(f'eval batch {i}')
+                eval_time = time.time()
+                actor.eval()
+                rewards.append(run_eval_gauss(actor, env, device, N))
+                actor.train()
+                print(f"Eval {j} time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - eval_time))}")
+                
+        print(f"Epoch {i} time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - epoch_time))}")
+    
+    print(f"Total time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))}")
+    print(f'final reward: {rewards[-1]}')
+    
+    return rewards 
+
+
+def train_diffusion(data, weights, device, batch_size, lr, eval_freq, N, weight_decay, pretrain_lr = 1e-4, pretrain_epochs=3, epochs=3, T=25):
+    start_time = time.time()
+    print("started training")
+    # init
+    env = gym.make(env_id)
+    env.single_observation_space = env.observation_space
+    env.single_action_space = env.action_space
+    
+    actor = DiffusionActor(env, T=T).to(device)
+    optimizer = optim.Adam(actor.parameters(), lr=lr, weight_decay=weight_decay)
+    
+    
+    # pretraining
+    target_time = time.time()
+    target_actor = OGActor(env).to(device)
+    target_actor.load_state_dict(weights)
+    
+    print(f'Target actor baseline: {run_eval(target_actor, env, device, N)}')
+    target_optimizer = optim.Adam(actor.parameters(), lr=pretrain_lr, weight_decay=weight_decay)
+    
+    batched_data = batch(data, batch_size=batch_size)
+    print("entering pretraining")
+    total_reward = 0
+    for i in range(pretrain_epochs):
+        epoch_time = time.time()
+        for j, b in enumerate(batched_data):
+            states = torch.stack([s for s, _ in b]).float().to(device=device)
+            with torch.no_grad():
+                action, log_prob, mean = target_actor.get_action(states)
+            
+            if i < 3:
+                t_rand = torch.zeros(states.size(0), dtype=torch.long, device=device)
+            else:
+                t_rand = torch.randint(0, T, (states.size(0),), device=device)
+            
+            alpha_b = actor.alpha_bar[t_rand].unsqueeze(1)
+            noise = torch.randn_like(mean)
+            action_noise = torch.sqrt(alpha_b) * mean + torch.sqrt(1 - alpha_b) * noise
+            
+            pred = actor(states, action_noise, t_rand)
+            loss = F.mse_loss(pred, noise)
+            total_reward += loss.item() * states.size(0)
+            
+            target_optimizer.zero_grad()
+            loss.backward()
+            target_optimizer.step()
+            
+        print(f"Epoch {i} time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - epoch_time))}")
+    
+    print(f"Target time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - target_time))}")
+    print(f"avg reward: {total_reward/len(data['observations'])}")
+    
+    actor.eval()
+    print("post-pretrain reward: ", run_eval_diff(actor, env, device, N))
+    actor.train()
+    
+    
+    
+    # training loop
+    actor.train()
+    rewards = []
+    batched_data = batch(data, batch_size=batch_size)
+    print("entering training loop")
+    for i in range(epochs):
+        epoch_time = time.time()
+        for j, b in enumerate(batched_data):
+            states = torch.stack([s for s, _ in b]).float().to(device=device)
+            actions = torch.stack([a for _, a in b]).float().to(device=device)
+            
+            t = torch.randint(0, actor.T, (states.size(0),), device=device)
+            alpha_bar_t = actor.alpha_bar[t].unsqueeze(1)
+            noise = torch.randn_like(actions)
+            action_noise = torch.sqrt(alpha_bar_t) * actions + torch.sqrt(1 - alpha_bar_t) * noise
+            
+            pred = actor(states, action_noise, t)
             loss = F.mse_loss(pred, noise)
             
             optimizer.zero_grad()
@@ -89,18 +204,16 @@ def train(data, weights, device, batch_size, lr, eval_freq, N, weight_decay, epo
                 # print(f'eval batch {i}')
                 eval_time = time.time()
                 actor.eval()
-                with torch.no_grad():
-                    rewards.append(run_eval_diff(actor, (obs_mean, obs_std), scheduler, env, device, N))
-                print(f"Eval {j} time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - eval_time))}")
+                rewards.append(run_eval_diff(actor, env, device, N))
                 actor.train()
-        
+                print(f"Eval {j} time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - eval_time))}")
+                
         print(f"Epoch {i} time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - epoch_time))}")
     
     print(f"Total time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))}")
     print(f'final reward: {rewards[-1]}')
     
-    return rewards
-
+    return rewards 
 
 
 
@@ -111,13 +224,15 @@ if __name__ == "__main__":
     
     # hparams
     batch_size = 500
-    lr = 1e-3
+    lr = 1e-4
     eval_freq = 100
-    N = 10
-    epochs = 1
+    N = 30
+    pretrain_lr = 5e-5
+    pretrain_epochs=20
+    epochs = 5
     weight_decay = 1e-6
     
-    rewards = train(
+    rewards = train_diffusion(
         data=data, 
         weights=weights, 
         device=device, 
@@ -126,7 +241,10 @@ if __name__ == "__main__":
         eval_freq=eval_freq, 
         N=N, 
         weight_decay=weight_decay,
-        epochs=epochs
+        pretrain_lr=pretrain_lr,
+        pretrain_epochs=pretrain_epochs,
+        epochs=epochs,
+        T=25
     )
     plot(rewards, eval_freq, batch_size, lr, N, True)
     
@@ -141,84 +259,3 @@ if __name__ == "__main__":
     #         rewards = train(data, weights, device, bs, l, eval_freq, N, epochs=epochs)
     #         plot(rewards, eval_freq, bs, l, N, True)
     
-    
-    
-    
-
-# old train function
-# def train(data, weights, device, batch_size, lr, eval_freq, N, weight_decay, epochs=3):
-#     print("started training")
-#     # init
-#     env = gym.make(env_id)
-#     env.single_observation_space = env.observation_space
-#     env.single_action_space = env.action_space
-#     actor = Actor(env).to(device)
-    
-#     new_sd = actor.state_dict()
-
-#     D = actor.action_dim  # e.g. 6
-#     K = actor.K           # e.g. 5
-#     for k, v in weights.items():
-#         if k in new_sd and v.shape == new_sd[k].shape:
-#             new_sd[k] = v
-        
-#         if k == "fc_mean.weight":
-#             new_sd[k][:D, :] = v
-#         elif k == "fc_mean.bias":
-#             new_sd[k][:D] = v
-#         elif k == "fc_logstd.weight":
-#             new_sd[k][:D, :] = v
-#         elif k == "fc_logstd.bias":
-#             new_sd[k][:D] = v
-    
-#     actor.load_state_dict(new_sd)
-#     optimizer = optim.Adam(actor.parameters(), lr=lr, weight_decay=weight_decay)
-    
-#     # training loop
-#     actor.train()
-#     rewards = []
-#     batched_data = batch(data, batch_size=batch_size)
-#     print("entering training loop")
-#     for _ in range(epochs):
-#         for i, b in enumerate(batched_data):
-#             states = torch.stack([s for s, _ in b]).float().to(device=device)
-#             actions = torch.stack([a for _, a in b]).float().to(device=device)
-            
-#             logits, mean, log_std = actor(states)
-#             mean = mean * actor.action_scale + actor.action_bias
-#             std = log_std.exp() * actor.action_scale
-            
-#             # mix = Categorical(logits=logits)
-#             # comp = Independent(Normal(mean, std), 1)
-                    
-#             # dist = MixtureSameFamily(mix, comp)
-#             # log_probs = dist.log_prob(actions)
-            
-#             probs = torch.softmax(logits, dim=1)
-#             mix = (probs.unsqueeze(-1) * mean).sum(dim=1)
-#             pred = torch.tanh(mix) * actor.action_scale + actor.action_bias
-            
-#             # confirm that data loaded correctly
-#             if i == 0:
-#                 print("MoG shapes:", logits.shape, mean.shape, std.shape)
-#                 print("Mixture weights (first):", torch.softmax(logits,1)[0].detach().cpu().numpy())
-#                 print("Means[0,k,:] for k=0..4:", mean[0].detach().cpu().numpy())  
-#                 print("Std[0,k,:] :", std[0].detach().cpu().numpy())
-            
-#             # loss = -log_probs.mean()
-#             loss = F.mse_loss(pred, actions)
-            
-#             optimizer.zero_grad()
-#             loss.backward()
-#             optimizer.step()
-            
-#             # eval
-#             if i % eval_freq == 0:
-#                 # print(f'eval batch {i}')
-#                 actor.eval()
-#                 rewards.append(run_eval_gauss(actor, env, device, N))
-#                 actor.train()
-    
-#     print(f'final reward: {rewards[-1]}')
-    
-#     return rewards    

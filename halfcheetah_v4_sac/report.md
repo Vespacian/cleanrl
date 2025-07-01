@@ -80,10 +80,12 @@ First try:
     - I kept the hparams similar to those from my findings while implementing MoG except for:
         - N=30, epochs=3, and weight_decay=1e-6
         - wanted more consistent results, in my first try, it was fluctuating significantly
-- Diffusion T=10
+- Diffusion T=25
     - to get a better understanding, I read this [paper](https://www.roboticsproceedings.org/rss19/p026.pdf) by Columbia University, Toyota Research Institute, MIT
-        - I decided to go for the CNN approach over the transformer and also added a noise scheduler
-        - wanted less hparam tuning
+    - I had the most difficulty with implementing this one properly, my rewards were absurdly low
+    - I decided to try to set up a pretraining loop before diffusion as currently, my diffusion loop was starting from scratch and wasn't considering the checkpoint's weights
+
+    - to try next: add diffusion scheduler, up the pretrain rewards, hparam search?, plot out alpha_bar for smooth decay?
     
     
 
@@ -97,7 +99,7 @@ First try:
 | Baseline log-prob min | batch_size=2000, lr=1e-4, <br> eval_freq=10, N=10 | ~7250 | Using Best Hparams |
 | DAgger | batch_size=2000, lr=1e-4, <br> eval_freq=10, N=10 | ~7000 | Trying to <br> improve baseline |
 | Gaussian Mixture | `k=5`, batch_size=500, lr=1e-3, <br> eval_freq=10, N=10 | ~6500 | k is number <br> of mixtures |
-| MSE | batch_size=500, lr=1e-3, <br> eval_freq=10, N=30 <br> epochs=3 weight_decay=1e-6 | ~9500 | This one is after <br> increasing the size <br> of the model and finding <br> optimal hparams |
+| MoG + MSE | batch_size=500, lr=1e-3, <br> eval_freq=10, N=30 <br> epochs=3 weight_decay=1e-6 | ~9500 | This one is after <br> increasing the size <br> of the model and finding <br> optimal hparams |
 | Diffusion | batch_size=500, lr=1e-3, <br> eval_freq=10, N=30 <br> epochs=3 weight_decay=1e-6 | ~ |  |
 
 
