@@ -99,6 +99,7 @@ First try:
 | Gaussian Mixture | `k=5`, batch_size=500, lr=1e-3, <br> eval_freq=10, N=10 | ~6500 | k is number <br> of mixtures |
 | MoG + MSE | batch_size=500, lr=1e-3, <br> eval_freq=10, N=30 <br> epochs=3 weight_decay=1e-6 | ~9500 | This one is after <br> increasing the size <br> of the model and finding <br> optimal hparams |
 | Diffusion + MSE | batch_size=500 lr=1e-4 eval_freq=100 <br> N=30 pretrain_lr=5e-5 pretrain_epochs=20 <br> epochs=5 weight_decay=1e-6 T=25 | ~2000 | Added pretrain loop for weights <br> then used diffusion policy |
+| Better Diffusion + MSE | batch_size=500 lr=1e-4 eval_freq=100 <br> N=30 pretrain_lr=5e-5 pretrain_epochs=20 <br> epochs=5 weight_decay=1e-6 T=25 | ~ | Used Linear scheduler from 🤗 <br> longer runtime |
 
 <div style="page-break-after: always;"></div>
 

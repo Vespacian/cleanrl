@@ -1,6 +1,8 @@
 import numpy as np
 import torch
-import math
+# import math
+import gymnasium as gym
+from gymnasium.vector import SyncVectorEnv
 
 # returns num_split amount of batches
 # in each batch, this will return a list of (s, a) elements
@@ -12,14 +14,40 @@ def batch(data, batch_size=500):
     
     return [list(zip(o, a)) for o, a in zip(obs, actions)]
 
-# scheduler
-def cosine_betas(T, s=0.008):
-    steps = T + 1
-    t = torch.linspace(0, T, steps) / T
-    alphas_bar = torch.cos((t+s) / (1+s) * math.pi / 2)**2
-    alphas_bar = alphas_bar / alphas_bar[0]
-    betas = 1 - alphas_bar[1:] / alphas_bar[:-1]
-    return betas.clamp(0, 0.999)
+
+def make_env(env_id):
+    def _init():
+        env = gym.make(env_id)
+        env.single_observation_space = env.observation_space
+        env.single_action_space = env.action_space
+        return env
+    return _init
+    
+def run_eval_diff_vec(actor, env_id, device, N=5, num_env=5):
+    envs = SyncVectorEnv([make_env(env_id) for _ in range(num_env)])
+    obs, info = envs.reset()
+    
+    total_rewards = []
+    current_rewards = np.zeros(num_env, dtype=np.float32)
+    
+    actor.eval()
+    with torch.no_grad():
+        while len(total_rewards) < N:
+            actions = actor.get_actions_batch(obs, device)
+            
+            obs, rewards, terminated, truncated, info = envs.step(actions)
+            current_rewards += rewards
+            done = terminated | truncated
+            
+            for i, d in enumerate(done):
+                if d:
+                    total_rewards.append(current_rewards[i])
+                    current_rewards[i] = 0
+                    if len(total_rewards) >= N:
+                        break
+    
+    actor.train()
+    return float(np.mean(total_rewards))
 
 
 

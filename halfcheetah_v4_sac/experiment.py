@@ -8,9 +8,10 @@ import time
 
 # network implementation
 from actor_impl import Actor, DiffusionActor, OGActor
-from helper_functions import batch, run_eval, run_eval_gauss, run_eval_diff
+from helper_functions import batch, run_eval, run_eval_gauss, run_eval_diff, run_eval_diff_vec
 import torch.nn.functional as F
 from torch.distributions import Categorical, Independent, MixtureSameFamily, Normal
+from diffusers import DDPMScheduler
 
 env_id = "HalfCheetah-v4"
 
@@ -118,7 +119,9 @@ def train(data, weights, device, batch_size, lr, eval_freq, N, weight_decay, epo
     return rewards 
 
 
-def train_diffusion(data, weights, device, batch_size, lr, eval_freq, N, weight_decay, pretrain_lr = 1e-4, pretrain_epochs=3, epochs=3, T=25):
+def train_diffusion(data, weights, device, batch_size, lr, eval_freq, N, 
+                    weight_decay, scheduler, pretrain_lr = 1e-4, pretrain_epochs=3, 
+                    epochs=3, T=25, num_env=5):
     start_time = time.time()
     print("started training")
     # init
@@ -126,7 +129,7 @@ def train_diffusion(data, weights, device, batch_size, lr, eval_freq, N, weight_
     env.single_observation_space = env.observation_space
     env.single_action_space = env.action_space
     
-    actor = DiffusionActor(env, T=T).to(device)
+    actor = DiffusionActor(env, scheduler=scheduler, T=T).to(device)
     optimizer = optim.Adam(actor.parameters(), lr=lr, weight_decay=weight_decay)
     
     
@@ -153,9 +156,10 @@ def train_diffusion(data, weights, device, batch_size, lr, eval_freq, N, weight_
             else:
                 t_rand = torch.randint(0, T, (states.size(0),), device=device)
             
-            alpha_b = actor.alpha_bar[t_rand].unsqueeze(1)
-            noise = torch.randn_like(mean)
-            action_noise = torch.sqrt(alpha_b) * mean + torch.sqrt(1 - alpha_b) * noise
+            # alpha_b = actor.alpha_bar[t_rand].unsqueeze(1)
+            noise = torch.randn_like(mean, device=device)
+            # action_noise = torch.sqrt(alpha_b) * mean + torch.sqrt(1 - alpha_b) * noise
+            action_noise = scheduler.add_noise(mean, noise, t_rand)
             
             pred = actor(states, action_noise, t_rand)
             loss = F.mse_loss(pred, noise)
@@ -169,10 +173,7 @@ def train_diffusion(data, weights, device, batch_size, lr, eval_freq, N, weight_
     
     print(f"Target time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - target_time))}")
     print(f"avg reward: {total_reward/len(data['observations'])}")
-    
-    actor.eval()
-    print("post-pretrain reward: ", run_eval_diff(actor, env, device, N))
-    actor.train()
+    print("post-pretrain reward: ", run_eval_diff_vec(actor, env_id, device, N, num_env=num_env))
     
     
     
@@ -188,9 +189,10 @@ def train_diffusion(data, weights, device, batch_size, lr, eval_freq, N, weight_
             actions = torch.stack([a for _, a in b]).float().to(device=device)
             
             t = torch.randint(0, actor.T, (states.size(0),), device=device)
-            alpha_bar_t = actor.alpha_bar[t].unsqueeze(1)
+            # alpha_bar_t = actor.alpha_bar[t].unsqueeze(1)
             noise = torch.randn_like(actions)
-            action_noise = torch.sqrt(alpha_bar_t) * actions + torch.sqrt(1 - alpha_bar_t) * noise
+            # action_noise = torch.sqrt(alpha_bar_t) * actions + torch.sqrt(1 - alpha_bar_t) * noise
+            action_noise = scheduler.add_noise(actions, noise, t)
             
             pred = actor(states, action_noise, t)
             loss = F.mse_loss(pred, noise)
@@ -203,9 +205,9 @@ def train_diffusion(data, weights, device, batch_size, lr, eval_freq, N, weight_
             if j % eval_freq == 0:
                 # print(f'eval batch {i}')
                 eval_time = time.time()
-                actor.eval()
-                rewards.append(run_eval_diff(actor, env, device, N))
-                actor.train()
+                # actor.eval()
+                rewards.append(run_eval_diff_vec(actor, env_id, device, N, num_env=num_env))
+                # actor.train()
                 print(f"Eval {j} time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - eval_time))}")
                 
         print(f"Epoch {i} time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - epoch_time))}")
@@ -219,7 +221,7 @@ def train_diffusion(data, weights, device, batch_size, lr, eval_freq, N, weight_
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    data = torch.load("halfcheetah_v4_sac/halfcheetah_v4_data.pt", map_location=device)
+    data = torch.load("halfcheetah_v4_sac/halfcheetah_v4_data.pt", map_location=device, weights_only=False)
     weights = torch.load("halfcheetah_v4_sac/halfcheetah_v4_actor_weights.pt", map_location=device)
     
     # hparams
@@ -228,9 +230,19 @@ if __name__ == "__main__":
     eval_freq = 100
     N = 30
     pretrain_lr = 5e-5
-    pretrain_epochs=20
-    epochs = 5
+    pretrain_epochs=50
+    epochs = 1
     weight_decay = 1e-6
+    T = 100
+    num_env=min(N, 16) # 16 is num of my CPU cores
+    
+    scheduler = DDPMScheduler(
+        num_train_timesteps=T,
+        beta_schedule="linear",
+        # clip_sample=False
+    )
+    scheduler.set_timesteps(T)
+    scheduler.timesteps = scheduler.timesteps.to(device)
     
     rewards = train_diffusion(
         data=data, 
@@ -241,10 +253,12 @@ if __name__ == "__main__":
         eval_freq=eval_freq, 
         N=N, 
         weight_decay=weight_decay,
+        scheduler=scheduler,
         pretrain_lr=pretrain_lr,
         pretrain_epochs=pretrain_epochs,
         epochs=epochs,
-        T=25
+        T=T, 
+        num_env=num_env
     )
     plot(rewards, eval_freq, batch_size, lr, N, True)
     

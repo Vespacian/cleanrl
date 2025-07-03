@@ -4,15 +4,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-from helper_functions import cosine_betas
-
 LOG_STD_MAX = 2
 LOG_STD_MIN = -5
 
 class DiffusionActor(nn.Module):
-    def __init__(self, env, T=25):
+    def __init__(self, env, scheduler, T=25):
         super().__init__()
         self.T = T
+        self.scheduler = scheduler
         self.state_dim = np.prod(env.single_observation_space.shape)
         self.action_dim = np.prod(env.single_action_space.shape)
         
@@ -25,18 +24,7 @@ class DiffusionActor(nn.Module):
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, self.action_dim)
-        )
-        
-        # betas = torch.linspace(1e-4, 0.02, T)
-        # betas = torch.linspace(1e-4, 0.1, T)
-        betas = cosine_betas(T)
-        alphas = 1.0 - betas
-        alpha_bar = torch.cumprod(alphas, dim=0)
-        
-        self.register_buffer("betas", betas)
-        self.register_buffer("alphas", alphas)
-        self.register_buffer("alpha_bar", alpha_bar)
-        
+        )     
         
         # action rescaling
         self.register_buffer(
@@ -57,7 +45,6 @@ class DiffusionActor(nn.Module):
     def forward(self, state, action_noise, t):
         time_embed = self.time_embed(t)
         x = torch.cat([state, action_noise, time_embed], 1)
-
         return self.net(x)
 
     def get_action(self, state, device):
@@ -66,20 +53,31 @@ class DiffusionActor(nn.Module):
             x = torch.from_numpy(state).float().to(device).unsqueeze(0)
             a = torch.randn(1, self.action_dim, device=device)
             
-            for step in reversed(range(self.T)):
-                t = torch.full((1,), step, dtype=torch.long, device=device)
-                beta = self.betas[step]
-                alpha = self.alphas[step]
-                alpha_bar = self.alpha_bar[step]
-                
-                pred = self.forward(x, a, t)
-                a = (1.0/torch.sqrt(alpha)) * (a - ((1.0-alpha) / torch.sqrt(1.0-alpha_bar)) * pred)
-                
-                if step > 0:
-                    a = a + torch.sqrt(beta) * torch.randn_like(a)
+            for t in self.scheduler.timesteps:
+                t_batch = torch.full((1,), int(t), dtype=torch.long, device=device)
+                pred = self.forward(x, a, t_batch)
+                step = self.scheduler.step(pred, int(t), a)
+                a = step.prev_sample
         
+        self.train()
         a = torch.tanh(a) * self.action_scale + self.action_bias
         return a.squeeze(0).cpu().numpy()
+    
+    # get action per batch for vectorization
+    def get_actions_batch(self, obs, device):
+        with torch.no_grad():
+            x = torch.from_numpy(obs).float().to(device)
+            B = x.shape[0]
+            a = torch.randn(B, self.action_dim, device=device)
+            
+            for t in self.scheduler.timesteps:
+                t_batch = torch.full((B,), int(t), dtype=torch.long, device=device)
+                pred = self.forward(x, a, t_batch)
+                step = self.scheduler.step(pred, int(t), a)
+                a = step.prev_sample
+        
+        a = torch.tanh(a) * self.action_scale + self.action_bias
+        return a.cpu().numpy()
 
 
 # the unchanged version in the given code
