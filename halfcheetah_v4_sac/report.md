@@ -84,7 +84,26 @@ First try:
     - to get a better understanding, I read this [paper](https://www.roboticsproceedings.org/rss19/p026.pdf) by Columbia University, Toyota Research Institute, MIT
     - I had the most difficulty with implementing this one properly, my rewards were absurdly low
     - I decided to try to set up a pretraining loop before diffusion as currently, my diffusion loop was starting from scratch and wasn't considering the checkpoint's weights
-    
+
+- Diffusion Part 2
+    - I decided to go for the DDPMScheduler because that seemed to be the most relevant to my use case for diffusion
+    - this time, I decided to try all the different beta schedulers Hugging Face offered. To test this, I used the same hparams for each scheduler to compare the difference:
+        - batch_size = 500
+        - lr = 1e-4
+        - eval_freq = 100
+        - N = 30
+        - pretrain_lr = 5e-5
+        - pretrain_epochs=50
+        - epochs = 1
+        - weight_decay = 1e-6
+        - T = 100
+        - num_env=min(N, 16) # 16 is num of my CPU cores
+    - reward results
+        - linear: ~4200
+        - scaled linear: ~3800
+        - squaredcos_cap_v2: ~3000
+        - sigmoid: ~4000
+    - now knowing this, I will be train the linear beta scheduler for much longer
     
 
 <div style="page-break-after: always;"></div>
@@ -97,20 +116,21 @@ First try:
 | Baseline log-prob min | batch_size=2000, lr=1e-4, <br> eval_freq=10, N=10 | ~7250 | Using Best Hparams |
 | DAgger | batch_size=2000, lr=1e-4, <br> eval_freq=10, N=10 | ~7000 | Trying to <br> improve baseline |
 | Gaussian Mixture | `k=5`, batch_size=500, lr=1e-3, <br> eval_freq=10, N=10 | ~6500 | k is number <br> of mixtures |
-| MoG + MSE | batch_size=500, lr=1e-3, <br> eval_freq=10, N=30 <br> epochs=3 weight_decay=1e-6 | ~9500 | This one is after <br> increasing the size <br> of the model and finding <br> optimal hparams |
-| Diffusion + MSE | batch_size=500 lr=1e-4 eval_freq=100 <br> N=30 pretrain_lr=5e-5 pretrain_epochs=20 <br> epochs=5 weight_decay=1e-6 T=25 | ~2000 | Added pretrain loop for weights <br> then used diffusion policy |
-| Better Diffusion + MSE | batch_size=500 lr=1e-4 eval_freq=100 <br> N=30 pretrain_lr=5e-5 pretrain_epochs=20 <br> epochs=5 weight_decay=1e-6 T=25 | ~ | Used Linear scheduler from 🤗 <br> longer runtime |
+| MoG + MSE | batch_size=500, lr=1e-3, <br> eval_freq=10, `N=30` <br> `epochs=3` `weight_decay=1e-6` | ~9500 | This one is after <br> increasing the size <br> of the model and finding <br> optimal hparams |
+| Diffusion + MSE | batch_size=500 lr=1e-4 eval_freq=100 <br> N=30 `pretrain_lr=5e-5` `pretrain_epochs=20` <br> `epochs=5` weight_decay=1e-6 `T=25` | ~2000 | Added pretrain loop for weights <br> then used diffusion policy |
+| Better Diffusion + MSE | batch_size = 500 lr = 1e-4 eval_freq = 100 <br> N = 30 pretrain_lr = 5e-5 `pretrain_epochs=50` <br> epochs = 1 weight_decay = 1e-6 `T = 100` `num_env=16` | ~4200 | Used DDPMScheduler scheduler from 🤗 |
+| Best Diffusion + MSE | batch_size = 500 lr = 1e-4 eval_freq = 100 <br> `N = 30` pretrain_lr = 5e-5 `pretrain_epochs=50` <br> `epochs = 1` weight_decay = 1e-6 `T = 100` num_env=16 | ~ | Trained for longer |
 
 <div style="page-break-after: always;"></div>
 
 # Diffusion
-- Ran multiple different attempts on trying to make diffusion work well
+<!-- - Ran multiple different attempts on trying to make diffusion work well
 - wanted to warm up the model with the checkpoint's weights so I made a pretrain loop
 - increased epochs and lowered lr in attempt to increase reward output
 - had the most struggle trying to have the actor learn
 - this was my best I could do it right now at about ~2000 rewards
 
-![best diffusion](plots/Diffusion/long_run.png)
+![best diffusion](plots/Diffusion/long_run.png) -->
 
 
 <div style="page-break-after: always;"></div>

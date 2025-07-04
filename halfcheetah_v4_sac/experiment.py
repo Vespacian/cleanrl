@@ -228,12 +228,12 @@ if __name__ == "__main__":
     batch_size = 500
     lr = 1e-4
     eval_freq = 100
-    N = 30
+    N = 50
     pretrain_lr = 5e-5
     pretrain_epochs=50
-    epochs = 1
+    epochs = 3
     weight_decay = 1e-6
-    T = 100
+    T = 200
     num_env=min(N, 16) # 16 is num of my CPU cores
     
     scheduler = DDPMScheduler(
