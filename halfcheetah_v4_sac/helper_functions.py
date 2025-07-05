@@ -50,6 +50,22 @@ def run_eval_diff_vec(actor, env_id, device, N=5, num_env=5):
     return float(np.mean(total_rewards))
 
 
+def run_eval_pretrain(actor, env, device, N=5):
+    total = 0
+    for _ in range(N): 
+        obs, info = env.reset()
+        episode_over = False
+        
+        while not episode_over:
+            with torch.no_grad():
+                action = actor.get_action_pretrain(obs, device)
+            
+            obs, reward, terminated, truncated, info = env.step(action)
+            episode_over = terminated or truncated
+            total += reward
+    
+    return total / N
+
 
 def run_eval_diff(actor, env, device, N=5):
     total = 0

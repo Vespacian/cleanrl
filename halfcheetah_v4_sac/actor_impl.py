@@ -7,15 +7,21 @@ import numpy as np
 LOG_STD_MAX = 2
 LOG_STD_MIN = -5
 
-class DiffusionActor(nn.Module):
-    def __init__(self, env, scheduler, T=25):
+class NewDiffusionActor(nn.Module):
+    def __init__(self, env, scheduler,T=25):
         super().__init__()
         self.T = T
         self.scheduler = scheduler
         self.state_dim = np.prod(env.single_observation_space.shape)
         self.action_dim = np.prod(env.single_action_space.shape)
+        hidden_dim = 256
         
-        hidden_dim = 512
+        self.pretrain_net = nn.Sequential(
+            nn.Linear(self.state_dim, hidden_dim), 
+            nn.ReLU(),
+            nn.Linear(hidden_dim, self.action_dim)
+        )
+        
         self.time_embed = nn.Embedding(T, hidden_dim)
         
         self.net = nn.Sequential(
@@ -43,6 +49,96 @@ class DiffusionActor(nn.Module):
         )
 
     def forward(self, state, action_noise, t):
+        time_embed = self.time_embed(t)
+        x = torch.cat([state, action_noise, time_embed], 1)
+        return self.net(x)
+    
+    def predict(self, states):
+        return self.pretrain_net(states)
+
+    def get_action(self, state, device):
+        self.eval()
+        with torch.no_grad():
+            x = torch.from_numpy(state).float().to(device).unsqueeze(0)
+            a = torch.randn(1, self.action_dim, device=device)
+            
+            for t in self.scheduler.timesteps:
+                t_batch = torch.full((1,), int(t), dtype=torch.long, device=device)
+                pred = self.forward(x, a, t_batch)
+                step = self.scheduler.step(pred, int(t), a)
+                a = step.prev_sample
+        
+        self.train()
+        a = torch.tanh(a) * self.action_scale + self.action_bias
+        return a.squeeze(0).cpu().numpy()
+    
+    def get_action_pretrain(self, np_state, device):
+        st = torch.from_numpy(np_state).float().unsqueeze(0).to(device)
+        with torch.no_grad():
+            pred = self.predict(st)
+            y = torch.tanh(pred) * self.action_scale + self.action_bias
+        return y.cpu().squeeze(0).numpy()
+    
+    # get action per batch for vectorization
+    def get_actions_batch(self, obs, device):
+        with torch.no_grad():
+            x = torch.from_numpy(obs).float().to(device)
+            B = x.shape[0]
+            a = torch.randn(B, self.action_dim, device=device)
+            
+            for t in self.scheduler.timesteps:
+                t_batch = torch.full((B,), int(t), dtype=torch.long, device=device)
+                pred = self.forward(x, a, t_batch)
+                step = self.scheduler.step(pred, int(t), a)
+                a = step.prev_sample
+        
+        a = torch.tanh(a) * self.action_scale + self.action_bias
+        return a.cpu().numpy()
+
+class DiffusionActor(nn.Module):
+    def __init__(self, env, scheduler, T=25):
+        super().__init__()
+        self.T = T
+        self.scheduler = scheduler
+        self.state_dim = np.prod(env.single_observation_space.shape)
+        self.action_dim = np.prod(env.single_action_space.shape)
+        
+        hidden_dim = 512
+        self.time_embed = nn.Embedding(T, hidden_dim)
+        # self.time_embed = nn.Sequential(
+        #     nn.Linear(1, hidden_dim),
+        #     nn.ReLU(),
+        #     nn.Linear(hidden_dim, hidden_dim)
+        # )
+        
+        self.net = nn.Sequential(
+            nn.Linear(self.state_dim + self.action_dim + hidden_dim, hidden_dim),
+            # nn.ReLU(),
+            # nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, self.action_dim)
+        )     
+        
+        # action rescaling
+        self.register_buffer(
+            "action_scale",
+            torch.tensor(
+                (env.single_action_space.high - env.single_action_space.low) / 2.0,
+                dtype=torch.float32,
+            ),
+        )
+        self.register_buffer(
+            "action_bias",
+            torch.tensor(
+                (env.single_action_space.high + env.single_action_space.low) / 2.0,
+                dtype=torch.float32,
+            ),
+        )
+
+    def forward(self, state, action_noise, t):
+        # t = t.float().unsqueeze(1) / self.T
         time_embed = self.time_embed(t)
         x = torch.cat([state, action_noise, time_embed], 1)
         return self.net(x)
