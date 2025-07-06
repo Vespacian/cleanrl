@@ -119,7 +119,7 @@ First try:
 | MoG + MSE | batch_size=500, lr=1e-3, <br> eval_freq=10, `N=30` <br> `epochs=3` `weight_decay=1e-6` | ~9500 | This one is after <br> increasing the size <br> of the model and finding <br> optimal hparams |
 | Diffusion + MSE | batch_size=500 lr=1e-4 eval_freq=100 <br> N=30 `pretrain_lr=5e-5` `pretrain_epochs=20` <br> `epochs=5` weight_decay=1e-6 `T=25` | ~2000 | Added pretrain loop for weights <br> then used diffusion policy |
 | Better Diffusion + MSE | batch_size = 500 lr = 1e-4 eval_freq = 100 <br> N = 30 pretrain_lr = 5e-5 `pretrain_epochs=50` <br> epochs = 1 weight_decay = 1e-6 `T = 100` `num_env=16` | ~4200 | Used DDPMScheduler scheduler from 🤗 |
-| Best Diffusion + MSE | batch_size = 500 lr = 1e-4 eval_freq = 100 <br> `N = 30` pretrain_lr = 5e-5 `pretrain_epochs=50` <br> `epochs = 1` weight_decay = 1e-6 `T = 100` num_env=16 | ~ | Trained for longer |
+| Best Diffusion + MSE | batch_size = 500 `lr = 1e-3` `eval_freq = 48000` N = 30 `epochs = 15` weight_decay = 1e-6 `T = 50` num_env=min(N, 16) | ~8500 | Fixed hparams <br> removed action scalings |
 
 <div style="page-break-after: always;"></div>
 
@@ -132,10 +132,16 @@ First try:
 
 ![best diffusion](plots/Diffusion/long_run.png) -->
 
+- fixed hparams
+- removed action scalings
+- added beta linear on DDPMScheduler from Hugging Face
+
+![best diffusion](plots/NewDiffusion/best_diffusion.png)
+
 
 <div style="page-break-after: always;"></div>
 
 # Best One Found
 - With Mixture of Gaussian with MSE Loss I was able to get a reward of ~9500. 
 
-![best result](plots/MSE/mse_best.png)
+![best result](plots/MoG+MSE/mse_best.png)

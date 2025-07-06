@@ -31,22 +31,6 @@ class NewDiffusionActor(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, self.action_dim)
         )     
-        
-        # action rescaling
-        self.register_buffer(
-            "action_scale",
-            torch.tensor(
-                (env.single_action_space.high - env.single_action_space.low) / 2.0,
-                dtype=torch.float32,
-            ),
-        )
-        self.register_buffer(
-            "action_bias",
-            torch.tensor(
-                (env.single_action_space.high + env.single_action_space.low) / 2.0,
-                dtype=torch.float32,
-            ),
-        )
 
     def forward(self, state, action_noise, t):
         time_embed = self.time_embed(t)
@@ -69,15 +53,13 @@ class NewDiffusionActor(nn.Module):
                 a = step.prev_sample
         
         self.train()
-        a = torch.tanh(a) * self.action_scale + self.action_bias
         return a.squeeze(0).cpu().numpy()
     
     def get_action_pretrain(self, np_state, device):
         st = torch.from_numpy(np_state).float().unsqueeze(0).to(device)
         with torch.no_grad():
             pred = self.predict(st)
-            y = torch.tanh(pred) * self.action_scale + self.action_bias
-        return y.cpu().squeeze(0).numpy()
+        return pred.cpu().squeeze(0).numpy()
     
     # get action per batch for vectorization
     def get_actions_batch(self, obs, device):
@@ -92,7 +74,6 @@ class NewDiffusionActor(nn.Module):
                 step = self.scheduler.step(pred, int(t), a)
                 a = step.prev_sample
         
-        a = torch.tanh(a) * self.action_scale + self.action_bias
         return a.cpu().numpy()
 
 class DiffusionActor(nn.Module):

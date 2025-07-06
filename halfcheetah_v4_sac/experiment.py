@@ -234,64 +234,64 @@ def new_train_diffusion(data, weights, device, batch_size, lr, eval_freq, N,
     batched_data = batch(data, batch_size=batch_size)
     
     # pretraining
-    print("entering pretraining")
-    target_time = time.time()
-    target_optimizer = optim.Adam(actor.pretrain_net.parameters(), lr=pretrain_lr, weight_decay=weight_decay)
+    # print("entering pretraining")
+    # target_time = time.time()
+    # target_optimizer = optim.Adam(actor.pretrain_net.parameters(), lr=pretrain_lr, weight_decay=weight_decay)
     
-    # warm starting actor with weights
-    og = OGActor(env).to(device)
-    og.load_state_dict(weights)
-    new_sd = actor.state_dict()
+    # # warm starting actor with weights
+    # og = OGActor(env).to(device)
+    # og.load_state_dict(weights)
+    # new_sd = actor.state_dict()
     
-    print("OGActor.fc1: ", og.fc1.weight.shape,
-        "pretrain_net[0]: ", actor.pretrain_net[0].weight.shape)
-    print("OGActor.fc_mean: ", og.fc_mean.weight.shape,
-        "pretrain_net[2]: ", actor.pretrain_net[2].weight.shape)
+    # print("OGActor.fc1: ", og.fc1.weight.shape,
+    #     "pretrain_net[0]: ", actor.pretrain_net[0].weight.shape)
+    # print("OGActor.fc_mean: ", og.fc_mean.weight.shape,
+    #     "pretrain_net[2]: ", actor.pretrain_net[2].weight.shape)
 
-    w_before = actor.pretrain_net[0].weight.data.view(-1)[0].item()
-    print("pretrain_net[0].weight[0] before copy:", w_before)
+    # w_before = actor.pretrain_net[0].weight.data.view(-1)[0].item()
+    # print("pretrain_net[0].weight[0] before copy:", w_before)
     
-    # manually add to prevent differences
-    for k, v in og.state_dict().items():
-        if k == "fc1.weight" and new_sd["pretrain_net.0.weight"].shape == v.shape:
-            new_sd["pretrain_net.0.weight"] = v.clone()
-        if k == "fc1.bias" and new_sd["pretrain_net.0.bias"].shape == v.shape:
-            new_sd["pretrain_net.0.bias"] = v.clone()
-        if k == "fc_mean.weight" and new_sd["pretrain_net.2.weight"].shape == v.shape:
-            new_sd["pretrain_net.2.weight"] = v.clone()
-        if k == "fc_mean.bias" and new_sd["pretrain_net.2.bias"].shape == v.shape:
-            new_sd["pretrain_net.2.bias"] = v.clone()
+    # # manually add to prevent differences
+    # for k, v in og.state_dict().items():
+    #     if k == "fc1.weight" and new_sd["pretrain_net.0.weight"].shape == v.shape:
+    #         new_sd["pretrain_net.0.weight"] = v.clone()
+    #     if k == "fc1.bias" and new_sd["pretrain_net.0.bias"].shape == v.shape:
+    #         new_sd["pretrain_net.0.bias"] = v.clone()
+    #     if k == "fc_mean.weight" and new_sd["pretrain_net.2.weight"].shape == v.shape:
+    #         new_sd["pretrain_net.2.weight"] = v.clone()
+    #     if k == "fc_mean.bias" and new_sd["pretrain_net.2.bias"].shape == v.shape:
+    #         new_sd["pretrain_net.2.bias"] = v.clone()
     
-    actor.load_state_dict(new_sd)
+    # actor.load_state_dict(new_sd)
     
-    w_after = actor.pretrain_net[0].weight.data.view(-1)[0].item()
-    print("pretrain_net[0].weight[0] after copy: ", w_after)
-    print("changed", w_before != w_after)
+    # w_after = actor.pretrain_net[0].weight.data.view(-1)[0].item()
+    # print("pretrain_net[0].weight[0] after copy: ", w_after)
+    # print("changed", w_before != w_after)
     
 
-    for i in range(pretrain_epochs):
-        epoch_time = time.time()
-        epoch_loss = 0
-        for j, b in enumerate(batched_data):
-            states = torch.stack([s for s, _ in b]).float().to(device=device)
-            actions = torch.stack([a for _, a in b]).float().to(device=device)
+    # for i in range(pretrain_epochs):
+    #     epoch_time = time.time()
+    #     epoch_loss = 0
+    #     for j, b in enumerate(batched_data):
+    #         states = torch.stack([s for s, _ in b]).float().to(device=device)
+    #         actions = torch.stack([a for _, a in b]).float().to(device=device)
             
-            pred = actor.predict(states)
-            loss = F.mse_loss(pred, actions)
+    #         pred = actor.predict(states)
+    #         loss = F.mse_loss(pred, actions)
             
-            target_optimizer.zero_grad()
-            loss.backward()
-            target_optimizer.step()
+    #         target_optimizer.zero_grad()
+    #         loss.backward()
+    #         target_optimizer.step()
             
-            epoch_loss += loss.item()
+    #         epoch_loss += loss.item()
         
-        avg_loss = epoch_loss / (len(data['observations']) / batch_size)
-        print(f'Pretrain epoch {i + 1}/{pretrain_epochs} MSE loss: {avg_loss}')
-        print(f"Epoch {i + 1} time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - epoch_time))}")
+    #     avg_loss = epoch_loss / (len(data['observations']) / batch_size)
+    #     print(f'Pretrain epoch {i + 1}/{pretrain_epochs} MSE loss: {avg_loss}')
+    #     print(f"Epoch {i + 1} time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - epoch_time))}")
     
-    print(f"Target time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - target_time))}")
-    # print("post-pretrain reward: ", run_eval_diff_vec(actor, env_id, device, N, num_env=num_env))
-    print("post-pretrain reward: ", run_eval_pretrain(actor, env, device, N))
+    # print(f"Target time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - target_time))}")
+    # # print("post-pretrain reward: ", run_eval_diff_vec(actor, env_id, device, N, num_env=num_env))
+    # print("post-pretrain reward: ", run_eval_pretrain(actor, env, device, N))
     
     
     
@@ -343,15 +343,15 @@ if __name__ == "__main__":
     weights = torch.load("halfcheetah_v4_sac/halfcheetah_v4_actor_weights.pt", map_location=device)
     
     # hparams
-    batch_size = 500
-    lr = 5e-5
-    eval_freq = 100
+    batch_size = 512
+    lr = 1e-3
+    eval_freq = 48000
     N = 30
     pretrain_lr = 5e-4
     pretrain_epochs=30
-    epochs = 1
+    epochs = 15
     weight_decay = 1e-6
-    T = 100
+    T = 50
     num_env=min(N, 16) # 16 is num of my CPU cores
     
     scheduler = DDPMScheduler(
