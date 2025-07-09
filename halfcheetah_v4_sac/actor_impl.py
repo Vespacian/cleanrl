@@ -7,6 +7,85 @@ import numpy as np
 LOG_STD_MAX = 2
 LOG_STD_MIN = -5
 
+class AutoregActor(nn.Module):
+    def __init__(self, env, bins=31):
+        super().__init__()
+        self.state_dim = np.prod(env.single_observation_space.shape)
+        self.action_dim = np.prod(env.single_action_space.shape)
+        self.bins = bins
+        hidden_dim = 256
+        
+        self.trunk = nn.Sequential(
+            nn.Linear(self.state_dim, hidden_dim), 
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), 
+            nn.ReLU()
+        )
+        
+        self.input_proj = nn.Linear(self.action_dim, hidden_dim, bias=False)
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(hidden_dim * 2, hidden_dim), 
+            nn.ReLU(),
+            nn.Linear(hidden_dim, bins)
+        ) 
+        
+        low = torch.tensor(env.single_action_space.low, dtype=torch.float32)
+        high = torch.tensor(env.single_action_space.high, dtype=torch.float32)
+        self.register_buffer(
+            "bin_centers", 
+            torch.stack([torch.linspace(l, h, bins) for l, h in zip(low, high)], dim=0)
+        )
+
+    def forward(self, states, actions_onehot):
+        B = states.size(0)
+        ctx = self.trunk(states)
+        
+        prev = (actions_onehot * self.bin_centers.unsqueeze(0)).sum(dim=2)
+        prev = self.input_proj(prev)
+        
+        h = torch.cat([ctx, prev], dim=1)
+        
+        logits = self.classifier(h)
+        return logits.unsqueeze(1).expand(-1, self.action_dim, -1)
+    
+    # get action per batch for vectorization
+    def get_actions_batch(self, obs, device):
+        x = torch.from_numpy(obs).float().to(device)
+        B = x.size(0)
+        
+        onehots = torch.zeros(B, self.action_dim, self.bins, device=device)
+        samples = torch.zeros(B, self.action_dim, device=device, dtype=torch.long)
+        for i in range(self.action_dim):
+            logits = self.forward(x, onehots)
+            logits_i = logits[:, i, :]
+            probs = F.softmax(logits_i, dim=-1)
+            idx = torch.multinomial(probs, 1).squeeze(1)
+            samples[:, i] = idx
+            onehots[torch.arange(B), i, idx] = 1
+        
+        centers = self.bin_centers.to(device)
+        actions = torch.stack([centers[i].gather(0, samples[:, i]) for i in range(self.action_dim)], dim=1)
+        return actions.cpu().numpy()
+    
+    def log_prob(self, states, actions):
+        bin_idx = ((actions.unsqueeze(-1) - self.bin_centers).abs().argmin(-1))
+        B = states.size(0)
+        onehots = torch.zeros(B, self.action_dim, self.bins, device=states.device)
+        
+        logprob = 0
+        for i in range(self.action_dim):
+            logits = self.forward(states, onehots)
+            logits_i = logits[:, i, :]
+            logprobs_i = F.log_softmax(logits_i, dim=-1)
+            
+            idx = bin_idx[:, i]
+            logprob += logprobs_i[torch.arange(B), idx]
+            onehots[torch.arange(B), i, idx] = 1
+        
+        return logprob
+            
+
 class NewDiffusionActor(nn.Module):
     def __init__(self, env, scheduler, timesteps=25):
         super().__init__()

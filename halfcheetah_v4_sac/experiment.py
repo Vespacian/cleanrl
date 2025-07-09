@@ -9,8 +9,8 @@ from torch.utils.tensorboard import SummaryWriter
 import time
 
 # network implementation
-from actor_impl import Actor, DiffusionActor, OGActor, NewDiffusionActor
-from helper_functions import batch, run_eval, run_eval_gauss, run_eval_diff, run_eval_diff_vec, run_eval_pretrain
+from actor_impl import AutoregActor
+from helper_functions import run_eval_autoreg_vec
 import torch.nn.functional as F
 from diffusers import DDPMScheduler
 import tyro
@@ -26,13 +26,15 @@ class Config:
     eval_episodes: int = 16
     epochs: int = 40
     weight_decay: float = 1e-6
-    timesteps: int = 50
     num_env: int = 16
-    logdir: str = "halfcheetah_v4_sac/runs"
+    
+    logdir: str = "halfcheetah_v4_sac/runs/autoreg"
+    # timesteps: int = 50
+    bins: int = 31
 
 
 
-def new_train_diffusion(data, weights, device, config: Config, scheduler):
+def train(data, weights, device, config: Config):
     start_time = time.time()
     print("started training")
     writer = SummaryWriter(log_dir=config.logdir)
@@ -41,7 +43,8 @@ def new_train_diffusion(data, weights, device, config: Config, scheduler):
     env.single_observation_space = env.observation_space
     env.single_action_space = env.action_space
     
-    actor = NewDiffusionActor(env, scheduler, timesteps=config.timesteps).to(device)
+    # actor = NewDiffusionActor(env, scheduler, timesteps=config.timesteps).to(device)
+    actor = AutoregActor(env, config.bins).to(device)
     optimizer = optim.Adam(actor.parameters(), lr=config.lr, weight_decay=config.weight_decay)
     
     # obs = torch.tensor(data['observations'], dtype=torch.float32).to(device)
@@ -66,12 +69,15 @@ def new_train_diffusion(data, weights, device, config: Config, scheduler):
             states = b[0].float().to(device)
             actions = b[1].float().to(device)
             
-            t = torch.randint(0, actor.timesteps, (states.size(0),), device=device)
-            noise = torch.randn_like(actions)
-            action_noise = scheduler.add_noise(actions, noise, t)
+            # t = torch.randint(0, actor.timesteps, (states.size(0),), device=device)
+            # noise = torch.randn_like(actions)
+            # action_noise = scheduler.add_noise(actions, noise, t)
             
-            pred = actor(states, action_noise, t)
-            loss = F.mse_loss(pred, noise)
+            # pred = actor(states, action_noise, t)
+            # loss = F.mse_loss(pred, noise)
+            
+            logprob = actor.log_prob(states, actions)
+            loss = -logprob.mean()
             
             optimizer.zero_grad()
             loss.backward()
@@ -87,7 +93,7 @@ def new_train_diffusion(data, weights, device, config: Config, scheduler):
                 # actor.eval()
                 # rewards.append(run_eval_diff_vec(actor, env_id, device, config.eval_episodes, num_env=config.num_env))
                 # actor.train()
-                reward = run_eval_diff_vec(actor, env_id, device, config.eval_episodes, num_env=config.num_env)
+                reward = run_eval_autoreg_vec(actor, env_id, device, config.eval_episodes, num_env=config.num_env)
                 print(f"Eval {j} time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - eval_time))}")
                 writer.add_scalar("Eval/Reward", reward, step)
         
@@ -111,20 +117,19 @@ if __name__ == "__main__":
     config = tyro.cli(Config)
     print(f'config: {config}')
     
-    scheduler = DDPMScheduler(
-        num_train_timesteps=config.timesteps,
-        beta_schedule="linear",
-        # clip_sample=False
-    )
-    scheduler.set_timesteps(config.timesteps)
-    scheduler.timesteps = scheduler.timesteps.to(device)
+    # scheduler = DDPMScheduler(
+    #     num_train_timesteps=config.timesteps,
+    #     beta_schedule="linear",
+    #     # clip_sample=False
+    # )
+    # scheduler.set_timesteps(config.timesteps)
+    # scheduler.timesteps = scheduler.timesteps.to(device)
     
-    new_train_diffusion(
+    train(
         data=data, 
         weights=weights, 
         device=device, 
         config=config, 
-        scheduler=scheduler
     )
     
     # rewards = new_train_diffusion(
@@ -144,3 +149,4 @@ if __name__ == "__main__":
     # )
     # plot(rewards, config.eval_freq, config.batch_size, config.lr, config.eval_episodes, "new_run", True)
     
+   

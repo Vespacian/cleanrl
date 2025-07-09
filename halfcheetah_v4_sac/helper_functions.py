@@ -3,6 +3,7 @@ import torch
 # import math
 import gymnasium as gym
 from gymnasium.vector import SyncVectorEnv
+from torch.utils.data import DataLoader
 
 # returns num_split amount of batches
 # in each batch, this will return a list of (s, a) elements
@@ -22,6 +23,33 @@ def make_env(env_id):
         env.single_action_space = env.action_space
         return env
     return _init
+
+# same as diff's
+def run_eval_autoreg_vec(actor, env_id, device, eval_episodes=5, num_env=5):
+    envs = SyncVectorEnv([make_env(env_id) for _ in range(num_env)])
+    obs, info = envs.reset()
+    
+    total_rewards = []
+    current_rewards = np.zeros(num_env, dtype=np.float32)
+    
+    actor.eval()
+    with torch.no_grad():
+        while len(total_rewards) < eval_episodes:
+            actions = actor.get_actions_batch(obs, device)
+            
+            obs, rewards, terminated, truncated, info = envs.step(actions)
+            current_rewards += rewards
+            done = terminated | truncated
+            
+            for i, d in enumerate(done):
+                if d:
+                    total_rewards.append(current_rewards[i])
+                    current_rewards[i] = 0
+                    if len(total_rewards) >= eval_episodes:
+                        break
+    
+    actor.train()
+    return float(np.mean(total_rewards))
     
 def run_eval_diff_vec(actor, env_id, device, N=5, num_env=5):
     envs = SyncVectorEnv([make_env(env_id) for _ in range(num_env)])
