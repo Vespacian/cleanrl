@@ -8,9 +8,9 @@ LOG_STD_MAX = 2
 LOG_STD_MIN = -5
 
 class NewDiffusionActor(nn.Module):
-    def __init__(self, env, scheduler,T=25):
+    def __init__(self, env, scheduler, timesteps=25):
         super().__init__()
-        self.T = T
+        self.timesteps = timesteps
         self.scheduler = scheduler
         self.state_dim = np.prod(env.single_observation_space.shape)
         self.action_dim = np.prod(env.single_action_space.shape)
@@ -22,7 +22,7 @@ class NewDiffusionActor(nn.Module):
             nn.Linear(hidden_dim, self.action_dim)
         )
         
-        self.time_embed = nn.Embedding(T, hidden_dim)
+        self.time_embed = nn.Embedding(timesteps, hidden_dim)
         
         self.net = nn.Sequential(
             nn.Linear(self.state_dim + self.action_dim + hidden_dim, hidden_dim),
