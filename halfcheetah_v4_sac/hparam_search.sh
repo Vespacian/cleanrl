@@ -2,6 +2,9 @@
 
 # bash halfcheetah_v4_sac/hparam_search.sh
 
+# so far, it's bs=512, lr=1e-3
+# bin=6 seems the best, 8 doesnt seem bad either
+
 epoch=5
 eval_freq=4688
 
@@ -9,9 +12,10 @@ eval_freq=4688
 # lrs=(5e-3 1e-3 5e-4 1e-4)
 # bins=(31)
 
-batch_sizes=(512 2048)
-lrs=(5e-3 1e-3)
-bins=(31)
+batch_sizes=(512)
+lrs=(1e-3)
+# bins=(11 25 31 41 51)
+bins=(5 6 7 8 9 10)
 
 for bs in "${batch_sizes[@]}"
 do
@@ -21,7 +25,7 @@ do
         do
             echo "Running: bs=$bs, lr=$lr, bins=$b"
 
-            logdir="halfcheetah_v4_sac/runs/hparam2/bs${bs}_lr${lr}_b${b}"
+            logdir="halfcheetah_v4_sac/runs/binsearch/bs${bs}_lr${lr}_b${b}"
             mkdir -p "$logdir"
 
             python halfcheetah_v4_sac/experiment.py \

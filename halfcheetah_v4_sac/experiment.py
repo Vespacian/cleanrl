@@ -29,6 +29,7 @@ class Config:
     num_env: int = 16
     
     # timesteps: int = 50
+    logdir: str = None
     bins: int = 31
 
 
@@ -36,8 +37,11 @@ class Config:
 def train(data, weights, device, config: Config):
     start_time = time.time()
     print("started training")
-    logdir = f"halfcheetah_v4_sac/runs/autoreg/bs{config.batch_size}_lr{config.lr}_b{config.bins}"
-    writer = SummaryWriter(log_dir=logdir)
+    if config.logdir is None:
+        logdir = f"halfcheetah_v4_sac/runs/autoreg/bs{config.batch_size}_lr{config.lr}_b{config.bins}"
+        writer = SummaryWriter(log_dir=logdir)
+    else:
+        writer = SummaryWriter(log_dir=config.logdir)
     # init
     env = gym.make(env_id)
     env.single_observation_space = env.observation_space
