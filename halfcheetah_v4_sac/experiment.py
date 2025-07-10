@@ -28,7 +28,6 @@ class Config:
     weight_decay: float = 1e-6
     num_env: int = 16
     
-    logdir: str = "halfcheetah_v4_sac/runs/autoreg"
     # timesteps: int = 50
     bins: int = 31
 
@@ -37,7 +36,8 @@ class Config:
 def train(data, weights, device, config: Config):
     start_time = time.time()
     print("started training")
-    writer = SummaryWriter(log_dir=config.logdir)
+    logdir = f"halfcheetah_v4_sac/runs/autoreg/bs{config.batch_size}_lr{config.lr}_b{config.bins}"
+    writer = SummaryWriter(log_dir=logdir)
     # init
     env = gym.make(env_id)
     env.single_observation_space = env.observation_space
@@ -107,7 +107,7 @@ def train(data, weights, device, config: Config):
     
     # return rewards 
 
-
+# python halfcheetah_v4_sac/experiment.py
 # tensorboard --logdir halfcheetah_v4_sac/runs
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -117,14 +117,6 @@ if __name__ == "__main__":
     config = tyro.cli(Config)
     print(f'config: {config}')
     
-    # scheduler = DDPMScheduler(
-    #     num_train_timesteps=config.timesteps,
-    #     beta_schedule="linear",
-    #     # clip_sample=False
-    # )
-    # scheduler.set_timesteps(config.timesteps)
-    # scheduler.timesteps = scheduler.timesteps.to(device)
-    
     train(
         data=data, 
         weights=weights, 
@@ -132,21 +124,5 @@ if __name__ == "__main__":
         config=config, 
     )
     
-    # rewards = new_train_diffusion(
-    #     data=data, 
-    #     weights=weights, 
-    #     device=device, 
-    #     scheduler=scheduler
-    #     batch_size=batch_size, 
-    #     lr=lr, 
-    #     eval_freq=eval_freq, 
-    #     eval_episodes=eval_episodes, 
-    #     weight_decay=weight_decay,
-    #     scheduler=scheduler,
-    #     epochs=epochs,
-    #     timesteps=timesteps, 
-    #     num_env=num_env
-    # )
-    # plot(rewards, config.eval_freq, config.batch_size, config.lr, config.eval_episodes, "new_run", True)
     
    
