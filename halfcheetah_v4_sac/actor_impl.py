@@ -7,6 +7,31 @@ import numpy as np
 LOG_STD_MAX = 2
 LOG_STD_MIN = -5
 
+class LogprobActor(nn.Module):
+    def __init__(self, env):
+        super().__init__()
+        self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod(), 256)
+        self.fc2 = nn.Linear(256, 256)
+        self.fc_mean = nn.Linear(256, np.prod(env.single_action_space.shape))
+        self.fc_logstd = nn.Linear(256, np.prod(env.single_action_space.shape))
+
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        mean = self.fc_mean(x)
+        log_std = self.fc_logstd(x)
+
+        return mean, log_std
+
+    def get_action(self, x):
+        mean, log_std = self(x)
+        std = log_std.exp()
+        normal = torch.distributions.Normal(mean, std)
+        x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1))
+        log_prob = normal.log_prob(x_t).sum(dim=-1, keepdim=True)
+        return x_t, log_prob, mean
+
 class AutoregActor(nn.Module):
     def __init__(self, env, bins=31):
         super().__init__()

@@ -9,19 +9,20 @@ from torch.utils.tensorboard import SummaryWriter
 import time
 
 # network implementation
-from actor_impl import AutoregActor
-from helper_functions import run_eval_autoreg_vec
+from actor_impl import AutoregActor, LogprobActor
+from helper_functions import run_eval_autoreg_vec, run_eval
 import torch.nn.functional as F
 from diffusers import DDPMScheduler
 import tyro
 from dataclasses import dataclass
+from torch.distributions import Normal
 
 env_id = "HalfCheetah-v4"
 
 @dataclass
 class Config:  
-    batch_size: int = 512
-    lr: float = 1e-3
+    batch_size: int = 2048
+    lr: float = 1e-4
     eval_freq: int = 4688
     eval_episodes: int = 16
     epochs: int = 40
@@ -30,7 +31,9 @@ class Config:
     
     # timesteps: int = 50
     logdir: str = None
-    bins: int = 31
+    # bins: int = 31
+
+
 
 
 
@@ -38,7 +41,7 @@ def train(data, weights, device, config: Config):
     start_time = time.time()
     print("started training")
     if config.logdir is None:
-        logdir = f"halfcheetah_v4_sac/runs/autoreg/bs{config.batch_size}_lr{config.lr}_b{config.bins}"
+        logdir = f"halfcheetah_v4_sac/runs/logprob/bs{config.batch_size}_lr{config.lr}"
         writer = SummaryWriter(log_dir=logdir)
     else:
         writer = SummaryWriter(log_dir=config.logdir)
@@ -48,16 +51,16 @@ def train(data, weights, device, config: Config):
     env.single_action_space = env.action_space
     
     # actor = NewDiffusionActor(env, scheduler, timesteps=config.timesteps).to(device)
-    actor = AutoregActor(env, config.bins).to(device)
+    # actor = AutoregActor(env, config.bins).to(device)
+    actor = LogprobActor(env).to(device)
+    actor.load_state_dict(weights, strict=False)
+    
     optimizer = optim.Adam(actor.parameters(), lr=config.lr, weight_decay=config.weight_decay)
     
-    # obs = torch.tensor(data['observations'], dtype=torch.float32).to(device)
-    # act = torch.tensor(data['actions'], dtype=torch.float32).to(device)
     obs = data['observations'].detach().clone().float().to(device)
     act = data['actions'].detach().clone().float().to(device)
     dataset = TensorDataset(obs, act)
     batched_data = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, num_workers=0)
-    # batched_data = batch(data, batch_size=batch_size) 
     
     # training loop
     actor.train()
@@ -80,8 +83,15 @@ def train(data, weights, device, config: Config):
             # pred = actor(states, action_noise, t)
             # loss = F.mse_loss(pred, noise)
             
-            logprob = actor.log_prob(states, actions)
+            # logprob = actor.log_prob(states, actions)
+            # loss = -logprob.mean()
+            
+            mean, log_std = actor(states)
+            std = log_std.exp()
+            dist = Normal(mean, std)
+            logprob = dist.log_prob(actions).sum(dim=1)
             loss = -logprob.mean()
+            
             
             optimizer.zero_grad()
             loss.backward()
@@ -89,7 +99,6 @@ def train(data, weights, device, config: Config):
             
             epoch_loss += loss.item()
             writer.add_scalar("Train/Loss", loss.item(), step)
-            step += 1
             
             # eval
             if j % config.eval_freq == 0:
@@ -97,9 +106,12 @@ def train(data, weights, device, config: Config):
                 # actor.eval()
                 # rewards.append(run_eval_diff_vec(actor, env_id, device, config.eval_episodes, num_env=config.num_env))
                 # actor.train()
-                reward = run_eval_autoreg_vec(actor, env_id, device, config.eval_episodes, num_env=config.num_env)
+                # reward = run_eval_autoreg_vec(actor, env_id, device, config.eval_episodes, num_env=config.num_env)
+                reward = run_eval(actor, env, device, config.eval_episodes)
                 print(f"Eval {j} time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - eval_time))}")
                 writer.add_scalar("Eval/Reward", reward, step)
+                
+            step += 1
         
         avg_loss = epoch_loss / (len(data['observations']) / config.batch_size)
         print(f'Epoch {i + 1} MSE loss: {avg_loss}')
@@ -107,9 +119,8 @@ def train(data, weights, device, config: Config):
     
     writer.close()
     print(f"Total time: {time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))}")
-    # print(f'final reward: {rewards[-1]}')
-    
-    # return rewards 
+
+
 
 # python halfcheetah_v4_sac/experiment.py
 # tensorboard --logdir halfcheetah_v4_sac/runs
@@ -127,6 +138,4 @@ if __name__ == "__main__":
         device=device, 
         config=config, 
     )
-    
-    
-   
+
